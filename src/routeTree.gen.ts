@@ -23,6 +23,8 @@ import { Route as AdminStoresRouteImport } from './routes/admin.stores'
 import { Route as AdminProductsRouteImport } from './routes/admin.products'
 import { Route as AdminOrdersRouteImport } from './routes/admin.orders'
 import { Route as AdminCategoriesRouteImport } from './routes/admin.categories'
+import { Route as SSlugCheckoutRouteImport } from './routes/s.$slug.checkout'
+import { Route as SSlugCartRouteImport } from './routes/s.$slug.cart'
 import { Route as SSlugProductIdRouteImport } from './routes/s.$slug.product.$id'
 
 const OnboardingRoute = OnboardingRouteImport.update({
@@ -95,6 +97,16 @@ const AdminCategoriesRoute = AdminCategoriesRouteImport.update({
   path: '/categories',
   getParentRoute: () => AdminRoute,
 } as any)
+const SSlugCheckoutRoute = SSlugCheckoutRouteImport.update({
+  id: '/checkout',
+  path: '/checkout',
+  getParentRoute: () => SSlugRoute,
+} as any)
+const SSlugCartRoute = SSlugCartRouteImport.update({
+  id: '/cart',
+  path: '/cart',
+  getParentRoute: () => SSlugRoute,
+} as any)
 const SSlugProductIdRoute = SSlugProductIdRouteImport.update({
   id: '/product/$id',
   path: '/product/$id',
@@ -116,6 +128,8 @@ export interface FileRoutesByFullPath {
   '/product/$id': typeof ProductIdRoute
   '/s/$slug': typeof SSlugRouteWithChildren
   '/admin/': typeof AdminIndexRoute
+  '/s/$slug/cart': typeof SSlugCartRoute
+  '/s/$slug/checkout': typeof SSlugCheckoutRoute
   '/s/$slug/product/$id': typeof SSlugProductIdRoute
 }
 export interface FileRoutesByTo {
@@ -132,6 +146,8 @@ export interface FileRoutesByTo {
   '/product/$id': typeof ProductIdRoute
   '/s/$slug': typeof SSlugRouteWithChildren
   '/admin': typeof AdminIndexRoute
+  '/s/$slug/cart': typeof SSlugCartRoute
+  '/s/$slug/checkout': typeof SSlugCheckoutRoute
   '/s/$slug/product/$id': typeof SSlugProductIdRoute
 }
 export interface FileRoutesById {
@@ -150,6 +166,8 @@ export interface FileRoutesById {
   '/product/$id': typeof ProductIdRoute
   '/s/$slug': typeof SSlugRouteWithChildren
   '/admin/': typeof AdminIndexRoute
+  '/s/$slug/cart': typeof SSlugCartRoute
+  '/s/$slug/checkout': typeof SSlugCheckoutRoute
   '/s/$slug/product/$id': typeof SSlugProductIdRoute
 }
 export interface FileRouteTypes {
@@ -169,6 +187,8 @@ export interface FileRouteTypes {
     | '/product/$id'
     | '/s/$slug'
     | '/admin/'
+    | '/s/$slug/cart'
+    | '/s/$slug/checkout'
     | '/s/$slug/product/$id'
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -185,6 +205,8 @@ export interface FileRouteTypes {
     | '/product/$id'
     | '/s/$slug'
     | '/admin'
+    | '/s/$slug/cart'
+    | '/s/$slug/checkout'
     | '/s/$slug/product/$id'
   id:
     | '__root__'
@@ -202,6 +224,8 @@ export interface FileRouteTypes {
     | '/product/$id'
     | '/s/$slug'
     | '/admin/'
+    | '/s/$slug/cart'
+    | '/s/$slug/checkout'
     | '/s/$slug/product/$id'
   fileRoutesById: FileRoutesById
 }
@@ -316,6 +340,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AdminCategoriesRouteImport
       parentRoute: typeof AdminRoute
     }
+    '/s/$slug/checkout': {
+      id: '/s/$slug/checkout'
+      path: '/checkout'
+      fullPath: '/s/$slug/checkout'
+      preLoaderRoute: typeof SSlugCheckoutRouteImport
+      parentRoute: typeof SSlugRoute
+    }
+    '/s/$slug/cart': {
+      id: '/s/$slug/cart'
+      path: '/cart'
+      fullPath: '/s/$slug/cart'
+      preLoaderRoute: typeof SSlugCartRouteImport
+      parentRoute: typeof SSlugRoute
+    }
     '/s/$slug/product/$id': {
       id: '/s/$slug/product/$id'
       path: '/product/$id'
@@ -347,10 +385,14 @@ const AdminRouteChildren: AdminRouteChildren = {
 const AdminRouteWithChildren = AdminRoute._addFileChildren(AdminRouteChildren)
 
 interface SSlugRouteChildren {
+  SSlugCartRoute: typeof SSlugCartRoute
+  SSlugCheckoutRoute: typeof SSlugCheckoutRoute
   SSlugProductIdRoute: typeof SSlugProductIdRoute
 }
 
 const SSlugRouteChildren: SSlugRouteChildren = {
+  SSlugCartRoute: SSlugCartRoute,
+  SSlugCheckoutRoute: SSlugCheckoutRoute,
   SSlugProductIdRoute: SSlugProductIdRoute,
 }
 

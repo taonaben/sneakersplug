@@ -1,6 +1,6 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { ArrowLeft, ChevronLeft, ChevronRight, HelpCircle, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useCart } from "@/contexts/CartContext";
@@ -88,6 +88,12 @@ function StoreProductDetail() {
   const { addItem } = useCart();
   const [sizeOpen, setSizeOpen] = useState(false);
   const [imageIndex, setImageIndex] = useState(0);
+  const [slideDir, setSlideDir] = useState<"up" | "down" | null>(null);
+  const touchStartX = useRef(0);
+  const touchStartY = useRef(0);
+  const touchEndX = useRef(0);
+  const touchEndY = useRef(0);
+  const hasSwiped = useRef(false);
 
   const { data: store, isLoading: storeLoading } = useQuery({
     queryKey: ["active-store", slug],
@@ -167,8 +173,9 @@ function StoreProductDetail() {
   const nextId = siblings && currentIndex < siblings.length - 1 ? siblings[currentIndex + 1].id : siblings && siblings.length > 0 ? siblings[0].id : null;
 
   const goToProduct = useCallback(
-    (targetId: string | null) => {
+    (targetId: string | null, dir: "up" | "down") => {
       if (!targetId || targetId === id) return;
+      setSlideDir(dir);
       navigate({ to: "/s/$slug/product/$id", params: { slug, id: targetId }, search: { cat } });
     },
     [navigate, slug, id, cat],
@@ -181,17 +188,71 @@ function StoreProductDetail() {
       if (event.key === "ArrowRight") goToImage("next");
       if (event.key === "ArrowUp") {
         event.preventDefault();
-        goToProduct(prevId);
+        goToProduct(prevId, "down");
       }
       if (event.key === "ArrowDown") {
         event.preventDefault();
-        goToProduct(nextId);
+        goToProduct(nextId, "up");
       }
     };
 
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
   }, [goToImage, goToProduct, prevId, nextId, sizeOpen]);
+
+  useEffect(() => {
+    let wheelTimeout: ReturnType<typeof setTimeout> | null = null;
+    const handler = (event: WheelEvent) => {
+      if (sizeOpen || wheelTimeout) return;
+      if (Math.abs(event.deltaY) < 30) return;
+
+      event.preventDefault();
+      wheelTimeout = setTimeout(() => {
+        wheelTimeout = null;
+      }, 400);
+
+      if (event.deltaY > 0) goToProduct(nextId, "up");
+      else goToProduct(prevId, "down");
+    };
+
+    window.addEventListener("wheel", handler, { passive: false });
+    return () => window.removeEventListener("wheel", handler);
+  }, [goToProduct, nextId, prevId, sizeOpen]);
+
+  const onTouchStart = (event: React.TouchEvent) => {
+    touchStartX.current = event.touches[0].clientX;
+    touchStartY.current = event.touches[0].clientY;
+    touchEndX.current = event.touches[0].clientX;
+    touchEndY.current = event.touches[0].clientY;
+    hasSwiped.current = false;
+  };
+
+  const onTouchMove = (event: React.TouchEvent) => {
+    touchEndX.current = event.touches[0].clientX;
+    touchEndY.current = event.touches[0].clientY;
+    hasSwiped.current = true;
+
+    const dy = Math.abs(touchEndY.current - touchStartY.current);
+    const dx = Math.abs(touchEndX.current - touchStartX.current);
+    if (dy > 10 || dx > 10) event.preventDefault();
+  };
+
+  const onTouchEnd = () => {
+    if (!hasSwiped.current) return;
+
+    const dx = touchStartX.current - touchEndX.current;
+    const dy = touchStartY.current - touchEndY.current;
+    const absDx = Math.abs(dx);
+    const absDy = Math.abs(dy);
+
+    if (absDx > absDy && absDx > 50) {
+      if (dx > 0) goToImage("next");
+      else goToImage("prev");
+    } else if (absDy > absDx && absDy > 80) {
+      if (dy > 0) goToProduct(nextId, "up");
+      else goToProduct(prevId, "down");
+    }
+  };
 
   if (storeLoading) {
     return (
@@ -253,7 +314,12 @@ function StoreProductDetail() {
   };
 
   return (
-    <div className="relative min-h-[calc(100vh-57px)] px-4 py-6 md:px-8">
+    <div
+      className="relative h-[calc(100vh-57px)] touch-none overflow-hidden overscroll-none px-4 py-6 md:px-8"
+      onTouchStart={onTouchStart}
+      onTouchMove={onTouchMove}
+      onTouchEnd={onTouchEnd}
+    >
       <Link to="/s/$slug" params={{ slug: store.slug }} className="mb-4 inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground">
         <ArrowLeft className="h-3 w-3" /> Back
       </Link>
@@ -277,8 +343,14 @@ function StoreProductDetail() {
         </>
       )}
 
-      <div className="mx-auto grid max-w-5xl gap-6 md:grid-cols-[minmax(280px,560px)_minmax(200px,280px)] md:items-center md:justify-center md:gap-12">
-        <div className="relative aspect-square overflow-hidden bg-secondary">
+      <div className="mx-auto grid h-[calc(100%-2rem)] max-w-5xl gap-6 md:grid-cols-[minmax(280px,560px)_minmax(200px,280px)] md:items-center md:justify-center md:gap-12">
+        <div
+          key={`${id}-image`}
+          className={`relative mx-auto aspect-square w-full max-w-[min(70vh,560px)] overflow-hidden bg-secondary ${
+            slideDir === "up" ? "animate-slide-up" : slideDir === "down" ? "animate-slide-down" : ""
+          }`}
+          onAnimationEnd={() => setSlideDir(null)}
+        >
           {currentImage ? (
             <img src={currentImage} alt={product.name} className="h-full w-full object-cover" />
           ) : (
@@ -308,17 +380,6 @@ function StoreProductDetail() {
           ) : (
             <p className="mt-4 text-xs uppercase tracking-wider text-destructive">Out of stock</p>
           )}
-
-          {siblings && siblings.length > 1 && (
-            <div className="mt-4 grid grid-cols-2 gap-2">
-              <Button type="button" variant="outline" className="text-xs uppercase" onClick={() => goToProduct(prevId)}>
-                Previous
-              </Button>
-              <Button type="button" variant="outline" className="text-xs uppercase" onClick={() => goToProduct(nextId)}>
-                Next
-              </Button>
-            </div>
-          )}
         </div>
       </div>
 
@@ -326,4 +387,3 @@ function StoreProductDetail() {
     </div>
   );
 }
-
