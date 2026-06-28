@@ -52,36 +52,36 @@ function AdminLayout() {
 
   return (
     <div className="min-h-screen">
-      <header className="border-b border-border px-4 py-3 md:px-8 flex items-center justify-between">
-        <div className="flex items-center gap-6">
-          <Link to="/admin" className="text-sm font-bold uppercase tracking-wider">Admin</Link>
-          <nav className="flex items-center gap-4">
+      <header className="border-b border-border px-4 py-3 md:px-8">
+        <div className="flex flex-wrap items-center justify-between gap-3 md:flex-nowrap">
+          <Link to="/admin" className="shrink-0 text-sm font-bold uppercase tracking-wider">Admin</Link>
+          <div className="flex min-w-0 flex-1 items-center justify-end gap-2 md:order-3 md:flex-none">
+            {stores.length > 0 && (
+              <Select value={selectedStoreId} onValueChange={setSelectedStoreId}>
+                <SelectTrigger className="h-8 min-w-0 flex-1 text-xs sm:w-44 sm:flex-none">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {stores.map((store) => (
+                    <SelectItem key={store.id} value={store.id}>{store.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
+            <Button variant="ghost" size="sm" className="shrink-0 text-xs" onClick={async () => { await supabase.auth.signOut(); navigate({ to: "/" }); }}>
+              Sign Out
+            </Button>
+          </div>
+          <nav className="-mx-4 order-3 flex w-[calc(100%+2rem)] items-center gap-4 overflow-x-auto px-4 pt-2 md:order-2 md:mx-0 md:w-auto md:overflow-visible md:px-0 md:pt-0">
             {navItems.map((item) => (
-              <Link key={item.to} to={item.to} className={navClass(item.to)}>
+              <Link key={item.to} to={item.to} className={cn(navClass(item.to), "shrink-0")}>
                 {item.label}
               </Link>
             ))}
           </nav>
         </div>
-        <div className="flex items-center gap-3">
-          {stores.length > 0 && (
-            <Select value={selectedStoreId} onValueChange={setSelectedStoreId}>
-              <SelectTrigger className="h-8 w-44 text-xs">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {stores.map((store) => (
-                  <SelectItem key={store.id} value={store.id}>{store.name}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          )}
-          <Button variant="ghost" size="sm" className="text-xs" onClick={async () => { await supabase.auth.signOut(); navigate({ to: "/" }); }}>
-            Sign Out
-          </Button>
-        </div>
       </header>
-      <div className="p-4 md:p-8">
+      <div className="px-4 py-5 md:p-8">
         <Outlet />
       </div>
     </div>

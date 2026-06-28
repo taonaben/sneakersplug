@@ -64,10 +64,10 @@ function AdminStores() {
                 key={store.id}
                 className="border border-border p-3 space-y-3"
               >
-                <div className="flex items-start justify-between gap-4">
-                  <div>
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
+                  <div className="min-w-0">
                     <p className="text-xs font-bold uppercase tracking-wider">{store.name}</p>
-                    <p className="text-[10px] text-muted-foreground">/s/{store.slug}</p>
+                    <p className="truncate text-[10px] text-muted-foreground">/s/{store.slug}</p>
                   </div>
                   <div className="flex items-center gap-3">
                     <span className="text-[10px] uppercase tracking-wider text-muted-foreground">Active</span>
@@ -98,7 +98,7 @@ function AdminStores() {
                       }}
                     />
                   </Field>
-                  <div className="flex flex-wrap items-center gap-2 md:flex-nowrap md:pt-[22px]">
+                  <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center md:flex-nowrap md:pt-[22px]">
                     <Button
                       type="button"
                       variant={selectedStoreId === store.id ? "default" : "outline"}

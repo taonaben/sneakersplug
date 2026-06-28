@@ -210,7 +210,7 @@ function ProductDetailsEditor({ attributes, onChange }: { attributes: ProductAtt
       ) : (
         <div className="space-y-2">
           {attributes.map((attribute, index) => (
-            <div key={index} className="grid grid-cols-[1fr_1fr_auto] gap-2">
+            <div key={index} className="grid gap-2 sm:grid-cols-[1fr_1fr_auto]">
               <Input
                 placeholder="Field"
                 value={attribute.name}
@@ -223,7 +223,7 @@ function ProductDetailsEditor({ attributes, onChange }: { attributes: ProductAtt
                 onChange={(e) => onChange(attributes.map((item, i) => (i === index ? { ...item, value: e.target.value } : item)))}
                 className="h-8 text-xs"
               />
-              <Button type="button" variant="ghost" size="icon" className="h-8 w-8 text-destructive" onClick={() => onChange(attributes.filter((_, i) => i !== index))}>
+              <Button type="button" variant="ghost" size="icon" className="h-8 w-8 text-destructive sm:self-start" onClick={() => onChange(attributes.filter((_, i) => i !== index))}>
                 <Trash2 className="h-3 w-3" />
               </Button>
             </div>
@@ -348,7 +348,7 @@ function OptionsEditor({
                   )}
                 </div>
               </Field>
-              <Button type="button" variant="ghost" size="icon" className="mt-5 h-8 w-8 text-destructive" onClick={() => updateOptions(options.filter((_, i) => i !== index))}>
+              <Button type="button" variant="ghost" size="icon" className="h-8 w-8 text-destructive md:mt-5" onClick={() => updateOptions(options.filter((_, i) => i !== index))}>
                 <Trash2 className="h-3 w-3" />
               </Button>
             </div>
@@ -549,7 +549,7 @@ export function ProductEditor({ onSaved }: { onSaved?: () => void }) {
           </Field>
         </div>
 
-        <div className="flex gap-2">
+        <div className="flex flex-col gap-2 sm:flex-row">
           <Button type="submit" disabled={saveMutation.isPending} className="text-xs uppercase tracking-widest">
             {saveMutation.isPending ? "Saving..." : "Add Product"}
           </Button>
@@ -592,7 +592,7 @@ function AdminProducts() {
 
   return (
     <div className="max-w-3xl">
-      <div className="mb-4 flex items-center justify-between gap-3">
+      <div className="mb-4 flex flex-col items-start gap-3 sm:flex-row sm:items-center sm:justify-between">
         <h2 className="text-sm font-bold uppercase tracking-wider">Products - {selectedStore.name}</h2>
         <Button asChild size="sm" className="h-8 text-[10px] uppercase tracking-wider">
           <Link to="/admin/products/new">

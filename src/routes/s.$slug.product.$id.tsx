@@ -66,8 +66,8 @@ function VariantSelector({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40" onClick={onClose}>
-      <div className="w-full max-w-lg animate-in slide-in-from-bottom bg-background px-6 pb-8 pt-5 duration-200" onClick={(e) => e.stopPropagation()}>
+    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 px-3" onClick={onClose}>
+      <div className="w-full max-w-lg animate-in slide-in-from-bottom bg-background px-4 pb-6 pt-5 duration-200 sm:px-6 sm:pb-8" onClick={(e) => e.stopPropagation()}>
         <div className="mb-2 flex items-center justify-between">
           <span className="w-4" />
           <span className="text-xs font-bold uppercase tracking-[0.2em]">Select Options</span>
@@ -287,6 +287,8 @@ function StoreProductDetail() {
   };
 
   const onTouchMove = (event: React.TouchEvent) => {
+    if (window.innerWidth < 768) return;
+
     touchEndX.current = event.touches[0].clientX;
     touchEndY.current = event.touches[0].clientY;
     hasSwiped.current = true;
@@ -403,7 +405,7 @@ function StoreProductDetail() {
 
   return (
     <div
-      className="relative h-[calc(100vh-57px)] touch-none overflow-hidden overscroll-none px-4 py-6 md:px-8"
+      className="relative px-4 py-5 sm:px-6 md:h-[calc(100vh-57px)] md:touch-none md:overflow-hidden md:overscroll-none md:px-8 md:py-6"
       onTouchStart={onTouchStart}
       onTouchMove={onTouchMove}
       onTouchEnd={onTouchEnd}
@@ -431,10 +433,10 @@ function StoreProductDetail() {
         </>
       )}
 
-      <div className="mx-auto grid h-[calc(100%-2rem)] max-w-5xl gap-6 md:grid-cols-[minmax(280px,560px)_minmax(200px,280px)] md:items-center md:justify-center md:gap-12">
+      <div className="mx-auto grid max-w-5xl gap-6 pb-8 md:h-[calc(100%-2rem)] md:grid-cols-[minmax(280px,560px)_minmax(200px,280px)] md:items-center md:justify-center md:gap-12 md:pb-0">
         <div
           key={`${id}-image`}
-          className={`relative mx-auto aspect-square w-full max-w-[min(70vh,560px)] overflow-hidden bg-secondary ${
+          className={`relative mx-auto aspect-square w-full max-w-[560px] overflow-hidden bg-secondary md:max-w-[min(70vh,560px)] ${
             slideDir === "up" ? "animate-slide-up" : slideDir === "down" ? "animate-slide-down" : ""
           }`}
           onAnimationEnd={() => setSlideDir(null)}
@@ -458,15 +460,15 @@ function StoreProductDetail() {
           )}
         </div>
 
-        <div className="flex flex-col justify-center">
+        <div className="flex min-w-0 flex-col justify-center">
           <h1 className="text-sm font-bold uppercase tracking-wider">{product.name}</h1>
           <p className="mt-1 text-sm text-muted-foreground">${displayPrice.toFixed(2)}</p>
           {attributes.length > 0 && (
             <dl className="mt-4 grid gap-2 border-t border-border pt-4">
               {attributes.filter((attribute) => attribute.value).map((attribute) => (
-                <div key={attribute.name} className="grid grid-cols-[7rem_1fr] gap-3 text-xs">
+                <div key={attribute.name} className="grid grid-cols-[minmax(5.5rem,7rem)_1fr] gap-3 text-xs">
                   <dt className="uppercase tracking-wider text-muted-foreground">{attribute.name}</dt>
-                  <dd>{attribute.value}</dd>
+                  <dd className="min-w-0 break-words">{attribute.value}</dd>
                 </div>
               ))}
             </dl>

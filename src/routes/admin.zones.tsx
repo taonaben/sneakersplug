@@ -67,8 +67,8 @@ function AdminZones() {
       </form>
       <div className="space-y-2">
         {zones?.map((z) => (
-          <div key={z.id} className="flex items-center justify-between border border-border p-3">
-            <span className="text-xs font-medium">{z.name}</span>
+          <div key={z.id} className="flex items-center justify-between gap-3 border border-border p-3">
+            <span className="min-w-0 break-words text-xs font-medium">{z.name}</span>
             <Switch checked={z.active} onCheckedChange={(checked) => toggleMutation.mutate({ id: z.id, active: checked })} />
           </div>
         ))}

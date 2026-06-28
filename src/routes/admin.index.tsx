@@ -15,9 +15,9 @@ function AdminDashboard() {
   ];
 
   return (
-    <div className="grid grid-cols-2 md:grid-cols-5 gap-4 max-w-3xl">
+    <div className="grid max-w-3xl grid-cols-1 gap-3 sm:grid-cols-2 md:grid-cols-5 md:gap-4">
       {links.map((l) => (
-        <Link key={l.to} to={l.to} className="border border-border p-4 hover:bg-secondary transition-colors">
+        <Link key={l.to} to={l.to} className="border border-border p-4 transition-colors hover:bg-secondary">
           <l.icon className="h-5 w-5 mb-2" />
           <p className="text-xs font-bold uppercase tracking-wider">{l.label}</p>
           <p className="text-[10px] text-muted-foreground mt-1">{l.desc}</p>

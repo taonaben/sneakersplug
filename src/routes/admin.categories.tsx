@@ -64,10 +64,10 @@ function AdminCategories() {
       {isLoading ? <p className="text-xs text-muted-foreground">Loading…</p> : (
         <div className="space-y-2">
           {categories?.map((c) => (
-            <div key={c.id} className="flex items-center justify-between border border-border p-2">
-              <div>
+            <div key={c.id} className="flex items-center justify-between gap-3 border border-border p-2">
+              <div className="min-w-0">
                 <p className="text-xs font-medium">{c.name}</p>
-                <p className="text-[10px] text-muted-foreground">/{c.slug} · order: {c.sort_order}</p>
+                <p className="truncate text-[10px] text-muted-foreground">/{c.slug} · order: {c.sort_order}</p>
               </div>
               <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive" onClick={() => deleteMutation.mutate(c.id)}>
                 <Trash2 className="h-3 w-3" />

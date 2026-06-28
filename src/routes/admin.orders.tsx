@@ -46,10 +46,10 @@ function AdminOrders() {
             const items = Array.isArray(order.items) ? order.items : [];
             return (
               <div key={order.id} className="border border-border p-3">
-                <div className="flex items-start justify-between gap-4">
-                  <div>
+                <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+                  <div className="min-w-0">
                     <p className="text-xs font-medium">{order.customer_name}</p>
-                    <p className="text-[10px] text-muted-foreground">{order.phone} - {order.email} - {order.city}</p>
+                    <p className="break-words text-[10px] text-muted-foreground">{order.phone} - {order.email} - {order.city}</p>
                     <p className="text-[10px] text-muted-foreground">{order.address}</p>
                     <div className="mt-1">
                       {items.map((item: any, i: number) => {
@@ -66,7 +66,7 @@ function AdminOrders() {
                     <p className="text-[10px] text-muted-foreground">{new Date(order.created_at).toLocaleString()}</p>
                   </div>
                   <Select value={order.status} onValueChange={(v) => updateStatus.mutate({ id: order.id, status: v as Enums<"order_status"> })}>
-                    <SelectTrigger className="w-28 h-8 text-xs">
+                    <SelectTrigger className="h-8 w-full text-xs sm:w-28">
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
