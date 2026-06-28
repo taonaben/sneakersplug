@@ -1,24 +1,60 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ArrowLeft, ChevronLeft, ChevronRight, X } from "lucide-react";
+import { ArrowLeft, ChevronLeft, ChevronRight, Share2, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useCart } from "@/contexts/CartContext";
 import { supabase } from "@/integrations/supabase/client";
 import type { Tables } from "@/integrations/supabase/types";
 import { fetchActiveStoreBySlug } from "@/lib/storefront";
 import { formatSelectedOptions, parseAttributes, selectedOptionsFromJson } from "@/lib/productTypes";
+import { shareProduct } from "@/lib/productShare";
 
 export const Route = createFileRoute("/s/$slug/product/$id")({
   validateSearch: (search: Record<string, unknown>) => ({
     cat: (search.cat as string) || undefined,
   }),
-  head: ({ params }) => ({
-    meta: [
-      { title: `${params.slug} - Product` },
-      { name: "description", content: "View this store product." },
-    ],
-  }),
+  loader: async ({ params }) => {
+    const store = await fetchActiveStoreBySlug(params.slug);
+    if (!store) return null;
+
+    const { data, error } = await supabase
+      .from("products")
+      .select("id, name, price, image_url")
+      .eq("id", params.id)
+      .eq("store_id", store.id)
+      .maybeSingle();
+
+    if (error) throw error;
+    return { store, product: data };
+  },
+  head: ({ params, loaderData }) => {
+    const product = loaderData?.product;
+    const store = loaderData?.store;
+    const title = product ? `${product.name} - ${store?.name ?? params.slug}` : `${params.slug} - Product`;
+    const description = product ? `$${product.price.toFixed(2)} at ${store?.name ?? params.slug}` : "View this store product.";
+    const imageUrl = product?.image_url;
+    const meta = [
+      { title },
+      { name: "description", content: description },
+      { property: "og:title", content: title },
+      { property: "og:description", content: description },
+      { property: "og:type", content: "product" },
+      { name: "twitter:card", content: imageUrl ? "summary_large_image" : "summary" },
+      { name: "twitter:title", content: title },
+      { name: "twitter:description", content: description },
+    ];
+
+    if (imageUrl) {
+      meta.push(
+        { property: "og:image", content: imageUrl },
+        { property: "og:image:secure_url", content: imageUrl },
+        { name: "twitter:image", content: imageUrl },
+      );
+    }
+
+    return { meta };
+  },
   component: StoreProductDetail,
 });
 
@@ -387,6 +423,22 @@ function StoreProductDetail() {
   const currentImage = allImages[imageIndex];
   const hasMultipleImages = allImages.length > 1;
 
+  const handleShare = async () => {
+    const url = new URL(`/s/${store.slug}/product/${product.id}`, window.location.origin).toString();
+
+    try {
+      await shareProduct({
+        name: product.name,
+        price: displayPrice,
+        storeName: store.name,
+        imageUrl: currentImage || product.image_url,
+        url,
+      });
+    } catch (error) {
+      if (!(error instanceof DOMException && error.name === "AbortError")) throw error;
+    }
+  };
+
   const handleAddToCart = () => {
     if (hasVariants) {
       setOptionOpen(true);
@@ -434,9 +486,14 @@ function StoreProductDetail() {
       onTouchMove={onTouchMove}
       onTouchEnd={onTouchEnd}
     >
-      <Link to="/s/$slug" params={{ slug: store.slug }} className="mb-4 inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground">
-        <ArrowLeft className="h-3 w-3" /> Back
-      </Link>
+      <div className="mb-4 flex items-center justify-between gap-3">
+        <Link to="/s/$slug" params={{ slug: store.slug }} className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground">
+          <ArrowLeft className="h-3 w-3" /> Back
+        </Link>
+        <Button variant="ghost" size="icon" className="h-8 w-8" onClick={handleShare} aria-label={`Share ${product.name}`}>
+          <Share2 className="h-4 w-4" />
+        </Button>
+      </div>
 
       {hasMultipleImages && (
         <>

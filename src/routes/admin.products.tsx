@@ -1,7 +1,7 @@
 import { createFileRoute, Link, Outlet, useLocation } from "@tanstack/react-router";
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Image, Plus, RefreshCw, Trash2, X } from "lucide-react";
+import { Image, Plus, RefreshCw, Share2, Trash2, X } from "lucide-react";
 import { Field } from "@/components/admin/Field";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -21,6 +21,7 @@ import {
   type ProductAttribute,
   type ProductType,
 } from "@/lib/productTypes";
+import { shareProduct } from "@/lib/productShare";
 
 export const Route = createFileRoute("/admin/products")({
   component: AdminProducts,
@@ -586,6 +587,24 @@ function AdminProducts() {
     onSuccess: () => qc.invalidateQueries({ queryKey: ["admin-products", selectedStoreId] }),
   });
 
+  const shareAdminProduct = async (product: NonNullable<typeof products>[number]) => {
+    if (!selectedStore) return;
+
+    const url = new URL(`/s/${selectedStore.slug}/product/${product.id}`, window.location.origin).toString();
+
+    try {
+      await shareProduct({
+        name: product.name,
+        price: product.price,
+        storeName: selectedStore.name,
+        imageUrl: product.image_url,
+        url,
+      });
+    } catch (error) {
+      if (!(error instanceof DOMException && error.name === "AbortError")) throw error;
+    }
+  };
+
   if (storesLoading) return <p className="text-xs text-muted-foreground">Loading...</p>;
   if (!selectedStore) return <p className="text-xs text-muted-foreground">Create a store before adding products.</p>;
   if (location.pathname !== "/admin/products") return <Outlet />;
@@ -623,9 +642,14 @@ function AdminProducts() {
                   ${p.price} · {PRODUCT_TYPE_PRESETS[(p.product_type as ProductType) || "general"]?.label ?? "General"} · Stock: {p.stock}
                 </p>
               </div>
-              <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive" onClick={() => deleteMutation.mutate(p.id)}>
-                <Trash2 className="h-3 w-3" />
-              </Button>
+              <div className="flex shrink-0 items-center gap-1">
+                <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => shareAdminProduct(p)} aria-label={`Share ${p.name}`}>
+                  <Share2 className="h-3 w-3" />
+                </Button>
+                <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive" onClick={() => deleteMutation.mutate(p.id)} aria-label={`Delete ${p.name}`}>
+                  <Trash2 className="h-3 w-3" />
+                </Button>
+              </div>
             </div>
           ))}
         </div>
