@@ -7,7 +7,6 @@ import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { Field } from "@/components/admin/Field";
 import { useAdminStores, slugify } from "@/hooks/useAdminStores";
-import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/admin/stores")({
   component: AdminStores,
@@ -63,10 +62,7 @@ function AdminStores() {
             {stores.map((store) => (
               <div
                 key={store.id}
-                className={cn(
-                  "border border-border p-3 space-y-3 transition-colors",
-                  selectedStoreId === store.id && "border-foreground bg-secondary/40",
-                )}
+                className="border border-border p-3 space-y-3"
               >
                 <div className="flex items-start justify-between gap-4">
                   <div>

@@ -10,10 +10,14 @@ interface FieldProps {
 
 export function Field({ label, helper, children, className }: FieldProps) {
   return (
-    <div className={cn("block space-y-1.5", className)}>
+    <div className={cn("group block space-y-1.5", className)}>
       <span className="block text-[10px] font-bold uppercase tracking-wider text-muted-foreground">{label}</span>
       {children}
-      {helper && <span className="block text-[10px] leading-snug text-muted-foreground">{helper}</span>}
+      {helper && (
+        <span className="block min-h-3 text-[10px] leading-snug text-muted-foreground opacity-0 transition-opacity group-focus-within:opacity-100">
+          {helper}
+        </span>
+      )}
     </div>
   );
 }
