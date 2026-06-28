@@ -2,10 +2,12 @@ import { createFileRoute, Outlet, Link, useNavigate } from "@tanstack/react-rout
 import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { useAdminStores } from "@/hooks/useAdminStores";
 
 export const Route = createFileRoute("/admin")({
   head: () => ({
-    meta: [{ title: "Admin — SneakersPlug" }],
+    meta: [{ title: "Admin - SneakersPlug" }],
   }),
   component: AdminLayout,
 });
@@ -13,7 +15,8 @@ export const Route = createFileRoute("/admin")({
 function AdminLayout() {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(true);
-  const [isAdmin, setIsAdmin] = useState(false);
+  const [isAuthed, setIsAuthed] = useState(false);
+  const { stores, selectedStoreId, setSelectedStoreId } = useAdminStores();
 
   useEffect(() => {
     const check = async () => {
@@ -22,19 +25,16 @@ function AdminLayout() {
         navigate({ to: "/login" });
         return;
       }
-      const { data: roles } = await supabase.from("user_roles").select("role").eq("user_id", user.id);
-      if (roles?.some((r) => r.role === "admin")) {
-        setIsAdmin(true);
-      } else {
-        navigate({ to: "/login" });
-      }
+
+      setIsAuthed(true);
       setLoading(false);
     };
+
     check();
   }, [navigate]);
 
-  if (loading) return <div className="flex min-h-screen items-center justify-center text-sm text-muted-foreground">Loading…</div>;
-  if (!isAdmin) return null;
+  if (loading) return <div className="flex min-h-screen items-center justify-center text-sm text-muted-foreground">Loading...</div>;
+  if (!isAuthed) return null;
 
   return (
     <div className="min-h-screen">
@@ -42,15 +42,30 @@ function AdminLayout() {
         <div className="flex items-center gap-6">
           <Link to="/admin" className="text-sm font-bold uppercase tracking-wider">Admin</Link>
           <nav className="flex items-center gap-4">
+            <Link to="/admin/stores" className="text-xs uppercase tracking-wider text-muted-foreground hover:text-foreground" activeProps={{ className: "text-xs uppercase tracking-wider text-foreground font-medium" }}>Stores</Link>
             <Link to="/admin/products" className="text-xs uppercase tracking-wider text-muted-foreground hover:text-foreground" activeProps={{ className: "text-xs uppercase tracking-wider text-foreground font-medium" }}>Products</Link>
             <Link to="/admin/orders" className="text-xs uppercase tracking-wider text-muted-foreground hover:text-foreground" activeProps={{ className: "text-xs uppercase tracking-wider text-foreground font-medium" }}>Orders</Link>
             <Link to="/admin/categories" className="text-xs uppercase tracking-wider text-muted-foreground hover:text-foreground" activeProps={{ className: "text-xs uppercase tracking-wider text-foreground font-medium" }}>Categories</Link>
             <Link to="/admin/zones" className="text-xs uppercase tracking-wider text-muted-foreground hover:text-foreground" activeProps={{ className: "text-xs uppercase tracking-wider text-foreground font-medium" }}>Zones</Link>
           </nav>
         </div>
-        <Button variant="ghost" size="sm" className="text-xs" onClick={async () => { await supabase.auth.signOut(); navigate({ to: "/" }); }}>
-          Sign Out
-        </Button>
+        <div className="flex items-center gap-3">
+          {stores.length > 0 && (
+            <Select value={selectedStoreId} onValueChange={setSelectedStoreId}>
+              <SelectTrigger className="h-8 w-44 text-xs">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {stores.map((store) => (
+                  <SelectItem key={store.id} value={store.id}>{store.name}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
+          <Button variant="ghost" size="sm" className="text-xs" onClick={async () => { await supabase.auth.signOut(); navigate({ to: "/" }); }}>
+            Sign Out
+          </Button>
+        </div>
       </header>
       <div className="p-4 md:p-8">
         <Outlet />

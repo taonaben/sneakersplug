@@ -1,5 +1,5 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { Package, ShoppingCart, Tag, MapPin } from "lucide-react";
+import { Package, ShoppingCart, Tag, MapPin, Store } from "lucide-react";
 
 export const Route = createFileRoute("/admin/")({
   component: AdminDashboard,
@@ -7,6 +7,7 @@ export const Route = createFileRoute("/admin/")({
 
 function AdminDashboard() {
   const links = [
+    { to: "/admin/stores" as const, label: "Stores", icon: Store, desc: "Manage storefronts" },
     { to: "/admin/products" as const, label: "Products", icon: Package, desc: "Manage inventory" },
     { to: "/admin/orders" as const, label: "Orders", icon: ShoppingCart, desc: "View & update orders" },
     { to: "/admin/categories" as const, label: "Categories", icon: Tag, desc: "Manage categories" },
@@ -14,7 +15,7 @@ function AdminDashboard() {
   ];
 
   return (
-    <div className="grid grid-cols-2 md:grid-cols-4 gap-4 max-w-2xl">
+    <div className="grid grid-cols-2 md:grid-cols-5 gap-4 max-w-3xl">
       {links.map((l) => (
         <Link key={l.to} to={l.to} className="border border-border p-4 hover:bg-secondary transition-colors">
           <l.icon className="h-5 w-5 mb-2" />

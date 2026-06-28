@@ -2,6 +2,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { useAdminStores } from "@/hooks/useAdminStores";
 import type { Enums } from "@/integrations/supabase/types";
 
 export const Route = createFileRoute("/admin/orders")({
@@ -10,11 +11,13 @@ export const Route = createFileRoute("/admin/orders")({
 
 function AdminOrders() {
   const qc = useQueryClient();
+  const { selectedStore, selectedStoreId, isLoading: storesLoading } = useAdminStores();
 
   const { data: orders, isLoading } = useQuery({
-    queryKey: ["admin-orders"],
+    queryKey: ["admin-orders", selectedStoreId],
+    enabled: !!selectedStoreId,
     queryFn: async () => {
-      const { data, error } = await supabase.from("orders").select("*").order("created_at", { ascending: false });
+      const { data, error } = await supabase.from("orders").select("*").eq("store_id", selectedStoreId).order("created_at", { ascending: false });
       if (error) throw error;
       return data;
     },
@@ -25,14 +28,15 @@ function AdminOrders() {
       const { error } = await supabase.from("orders").update({ status }).eq("id", id);
       if (error) throw error;
     },
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["admin-orders"] }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["admin-orders", selectedStoreId] }),
   });
 
-  if (isLoading) return <p className="text-xs text-muted-foreground">Loading…</p>;
+  if (storesLoading || isLoading) return <p className="text-xs text-muted-foreground">Loading...</p>;
+  if (!selectedStore) return <p className="text-xs text-muted-foreground">Create a store before viewing orders.</p>;
 
   return (
     <div className="max-w-3xl">
-      <h2 className="text-sm font-bold uppercase tracking-wider mb-4">Orders</h2>
+      <h2 className="text-sm font-bold uppercase tracking-wider mb-4">Orders - {selectedStore.name}</h2>
       {orders?.length === 0 ? (
         <p className="text-xs text-muted-foreground">No orders yet.</p>
       ) : (
@@ -44,11 +48,11 @@ function AdminOrders() {
                 <div className="flex items-start justify-between gap-4">
                   <div>
                     <p className="text-xs font-medium">{order.customer_name}</p>
-                    <p className="text-[10px] text-muted-foreground">{order.phone} · {order.city}</p>
+                    <p className="text-[10px] text-muted-foreground">{order.phone} - {order.email} - {order.city}</p>
                     <p className="text-[10px] text-muted-foreground">{order.address}</p>
                     <div className="mt-1">
                       {items.map((item: any, i: number) => (
-                        <p key={i} className="text-[10px]">{item.quantity}x {item.name} — ${(item.price * item.quantity).toFixed(2)}</p>
+                        <p key={i} className="text-[10px]">{item.quantity}x {item.name} - ${(item.price * item.quantity).toFixed(2)}</p>
                       ))}
                     </div>
                     <p className="text-xs font-bold mt-1">Total: ${order.total}</p>

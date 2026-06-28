@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Trash2, Plus, Image } from "lucide-react";
 import type { Tables } from "@/integrations/supabase/types";
+import { useAdminStores } from "@/hooks/useAdminStores";
 
 export const Route = createFileRoute("/admin/products")({
   component: AdminProducts,
@@ -26,6 +27,15 @@ interface PendingSize {
 }
 
 const emptyForm: ProductForm = { name: "", price: "", stock: "0", category_id: "" };
+
+async function uploadProductImage(storeId: string, productId: string, file: File, label: string) {
+  const ext = file.name.split(".").pop();
+  const path = `stores/${storeId}/products/${productId}/${Date.now()}_${label}.${ext}`;
+  const { error: uploadErr } = await supabase.storage.from("product-images").upload(path, file);
+  if (uploadErr) throw uploadErr;
+  const { data: urlData } = supabase.storage.from("product-images").getPublicUrl(path);
+  return urlData.publicUrl;
+}
 
 /* ── Size manager for a single product ── */
 function SizeManager({ productId }: { productId: string }) {
@@ -119,7 +129,7 @@ function SizeManager({ productId }: { productId: string }) {
 }
 
 /* ── Image manager for extra product images ── */
-function ImageManager({ productId }: { productId: string }) {
+function ImageManager({ productId, storeId }: { productId: string; storeId: string }) {
   const qc = useQueryClient();
 
   const { data: images } = useQuery({
@@ -133,15 +143,12 @@ function ImageManager({ productId }: { productId: string }) {
 
   const uploadMutation = useMutation({
     mutationFn: async (file: File) => {
-      const ext = file.name.split(".").pop();
-      const path = `${productId}/${Date.now()}.${ext}`;
-      const { error: uploadErr } = await supabase.storage.from("product-images").upload(path, file);
-      if (uploadErr) throw uploadErr;
-      const { data: urlData } = supabase.storage.from("product-images").getPublicUrl(path);
+      if ((images?.length ?? 0) >= 3) throw new Error("Each product can only have 3 gallery images.");
+      const imageUrl = await uploadProductImage(storeId, productId, file, "gallery");
       const nextOrder = images?.length ?? 0;
       const { error } = await supabase.from("product_images").insert({
         product_id: productId,
-        image_url: urlData.publicUrl,
+        image_url: imageUrl,
         sort_order: nextOrder,
       });
       if (error) throw error;
@@ -200,6 +207,7 @@ function ImageManager({ productId }: { productId: string }) {
 /* ── Main admin products page ── */
 function AdminProducts() {
   const qc = useQueryClient();
+  const { selectedStore, selectedStoreId, isLoading: storesLoading } = useAdminStores();
   const [form, setForm] = useState<ProductForm>(emptyForm);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [pendingSizes, setPendingSizes] = useState<PendingSize[]>([]);
@@ -207,18 +215,20 @@ function AdminProducts() {
   const [newSize, setNewSize] = useState<PendingSize>({ label: "", altLabel: "", stock: "0" });
 
   const { data: products, isLoading } = useQuery({
-    queryKey: ["admin-products"],
+    queryKey: ["admin-products", selectedStoreId],
+    enabled: !!selectedStoreId,
     queryFn: async () => {
-      const { data, error } = await supabase.from("products").select("*, categories(name)").order("created_at", { ascending: false });
+      const { data, error } = await supabase.from("products").select("*, categories(name)").eq("store_id", selectedStoreId).order("created_at", { ascending: false });
       if (error) throw error;
       return data;
     },
   });
 
   const { data: categories } = useQuery({
-    queryKey: ["categories"],
+    queryKey: ["categories", selectedStoreId],
+    enabled: !!selectedStoreId,
     queryFn: async () => {
-      const { data, error } = await supabase.from("categories").select("*").order("sort_order");
+      const { data, error } = await supabase.from("categories").select("*").eq("store_id", selectedStoreId).order("sort_order");
       if (error) throw error;
       return data;
     },
@@ -226,20 +236,18 @@ function AdminProducts() {
 
   const saveMutation = useMutation({
     mutationFn: async () => {
+      if (!selectedStoreId) throw new Error("Select a store before saving products.");
+      if (pendingImages.length > 4) throw new Error("Each product can only have 4 total images.");
       let image_url: string | undefined;
 
       // For editing: upload a replacement main image if new images were picked
       if (editingId && pendingImages.length > 0) {
         const mainFile = pendingImages[0];
-        const ext = mainFile.name.split(".").pop();
-        const path = `${Date.now()}.${ext}`;
-        const { error: uploadErr } = await supabase.storage.from("product-images").upload(path, mainFile);
-        if (uploadErr) throw uploadErr;
-        const { data: urlData } = supabase.storage.from("product-images").getPublicUrl(path);
-        image_url = urlData.publicUrl;
+        image_url = await uploadProductImage(selectedStoreId, editingId, mainFile, "cover");
       }
 
       const payload = {
+        store_id: selectedStoreId,
         name: form.name,
         price: parseFloat(form.price),
         stock: parseInt(form.stock),
@@ -254,33 +262,25 @@ function AdminProducts() {
         // Upload remaining as extra images
         for (let i = 1; i < pendingImages.length; i++) {
           const file = pendingImages[i];
-          const ext = file.name.split(".").pop();
-          const path = `${editingId}/${Date.now()}_${i}.${ext}`;
-          const { error: upErr } = await supabase.storage.from("product-images").upload(path, file);
-          if (upErr) throw upErr;
-          const { data: urlData } = supabase.storage.from("product-images").getPublicUrl(path);
+          const imageUrl = await uploadProductImage(selectedStoreId, editingId, file, `gallery_${i}`);
           const { error: imgErr } = await supabase.from("product_images").insert({
             product_id: editingId,
-            image_url: urlData.publicUrl,
-            sort_order: i,
+            image_url: imageUrl,
+            sort_order: i - 1,
           });
           if (imgErr) throw imgErr;
         }
       } else {
         // Creation: first image → main image_url
-        if (pendingImages.length > 0) {
-          const mainFile = pendingImages[0];
-          const ext = mainFile.name.split(".").pop();
-          const path = `${Date.now()}.${ext}`;
-          const { error: uploadErr } = await supabase.storage.from("product-images").upload(path, mainFile);
-          if (uploadErr) throw uploadErr;
-          const { data: urlData } = supabase.storage.from("product-images").getPublicUrl(path);
-          payload.image_url = urlData.publicUrl;
-        }
-
         const { data: newProduct, error } = await supabase.from("products").insert(payload as any).select("id").single();
         if (error) throw error;
         const pid = newProduct.id;
+
+        if (pendingImages.length > 0) {
+          const coverUrl = await uploadProductImage(selectedStoreId, pid, pendingImages[0], "cover");
+          const { error: coverErr } = await supabase.from("products").update({ image_url: coverUrl }).eq("id", pid);
+          if (coverErr) throw coverErr;
+        }
 
         // Bulk insert pending sizes
         if (pendingSizes.length > 0) {
@@ -298,22 +298,18 @@ function AdminProducts() {
         // Upload extra images (index 1+)
         for (let i = 1; i < pendingImages.length; i++) {
           const file = pendingImages[i];
-          const ext = file.name.split(".").pop();
-          const path = `${pid}/${Date.now()}_${i}.${ext}`;
-          const { error: upErr } = await supabase.storage.from("product-images").upload(path, file);
-          if (upErr) throw upErr;
-          const { data: urlData } = supabase.storage.from("product-images").getPublicUrl(path);
+          const imageUrl = await uploadProductImage(selectedStoreId, pid, file, `gallery_${i}`);
           const { error: imgErr } = await supabase.from("product_images").insert({
             product_id: pid,
-            image_url: urlData.publicUrl,
-            sort_order: i,
+            image_url: imageUrl,
+            sort_order: i - 1,
           });
           if (imgErr) throw imgErr;
         }
       }
     },
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["admin-products"] });
+      qc.invalidateQueries({ queryKey: ["admin-products", selectedStoreId] });
       setForm(emptyForm);
       setEditingId(null);
       setPendingSizes([]);
@@ -327,7 +323,7 @@ function AdminProducts() {
       const { error } = await supabase.from("products").delete().eq("id", id);
       if (error) throw error;
     },
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["admin-products"] }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["admin-products", selectedStoreId] }),
   });
 
   const startEdit = (p: Tables<"products">) => {
@@ -337,9 +333,12 @@ function AdminProducts() {
     setPendingImages([]);
   };
 
+  if (storesLoading) return <p className="text-xs text-muted-foreground">Loading...</p>;
+  if (!selectedStore) return <p className="text-xs text-muted-foreground">Create a store before adding products.</p>;
+
   return (
     <div className="max-w-2xl">
-      <h2 className="text-sm font-bold uppercase tracking-wider mb-4">{editingId ? "Edit Product" : "Add Product"}</h2>
+      <h2 className="text-sm font-bold uppercase tracking-wider mb-4">{editingId ? "Edit Product" : "Add Product"} - {selectedStore.name}</h2>
 
       <form
         onSubmit={(e) => { e.preventDefault(); saveMutation.mutate(); }}
@@ -388,7 +387,7 @@ function AdminProducts() {
             multiple
             onChange={(e) => {
               const files = e.target.files;
-              if (files) setPendingImages((p) => [...p, ...Array.from(files)]);
+              if (files) setPendingImages((p) => [...p, ...Array.from(files)].slice(0, 4));
               e.target.value = "";
             }}
             className="text-xs"
@@ -435,7 +434,7 @@ function AdminProducts() {
       </form>
 
       {/* Image & Size managers appear when editing an existing product */}
-      {editingId && <ImageManager productId={editingId} />}
+      {editingId && <ImageManager productId={editingId} storeId={selectedStoreId} />}
       {editingId && <SizeManager productId={editingId} />}
 
       <h2 className="text-sm font-bold uppercase tracking-wider mb-3 mt-8">All Products</h2>

@@ -10,7 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 export const Route = createFileRoute("/checkout")({
   head: () => ({
     meta: [
-      { title: "Checkout — SneakersPlug" },
+      { title: "Checkout - SneakersPlug" },
       { name: "description", content: "Complete your order at SneakersPlug." },
     ],
   }),
@@ -21,12 +21,24 @@ function CheckoutPage() {
   const { items, subtotal, clearCart } = useCart();
   const navigate = useNavigate();
   const [submitting, setSubmitting] = useState(false);
-  const [form, setForm] = useState({ name: "", phone: "", city: "", address: "" });
+  const [form, setForm] = useState({ name: "", phone: "", email: "", city: "", address: "" });
+  const storeId = items[0]?.store_id;
+
+  const { data: store } = useQuery({
+    queryKey: ["checkout-store", storeId],
+    enabled: !!storeId,
+    queryFn: async () => {
+      const { data, error } = await supabase.from("stores").select("id, name, order_notification_phone").eq("id", storeId).single();
+      if (error) throw error;
+      return data;
+    },
+  });
 
   const { data: zones } = useQuery({
-    queryKey: ["delivery_zones"],
+    queryKey: ["delivery_zones", storeId],
+    enabled: !!storeId,
     queryFn: async () => {
-      const { data, error } = await supabase.from("delivery_zones").select("*").eq("active", true).order("name");
+      const { data, error } = await supabase.from("delivery_zones").select("*").eq("store_id", storeId).eq("active", true).order("name");
       if (error) throw error;
       return data;
     },
@@ -39,33 +51,35 @@ function CheckoutPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!form.name.trim() || !form.phone.trim() || !form.city || !form.address.trim()) return;
+    if (!storeId || !form.name.trim() || !form.phone.trim() || !form.email.trim() || !form.city || !form.address.trim()) return;
     setSubmitting(true);
 
     try {
       const orderItems = items.map((i) => ({ id: i.id, name: i.name, price: i.price, quantity: i.quantity, size: i.size || null, size_id: i.size_id || null }));
 
-      await supabase.from("orders").insert({
+      const { error } = await supabase.from("orders").insert({
+        store_id: storeId,
         customer_name: form.name.trim(),
         phone: form.phone.trim(),
+        email: form.email.trim(),
         city: form.city,
         address: form.address.trim(),
         items: orderItems,
         total: subtotal,
-      });
+      } as any);
+      if (error) throw error;
 
-      // Build WhatsApp message
       const lines = items.map((i) => {
         const sizeStr = i.size ? ` (Size: ${i.size})` : "";
-        return `${i.quantity}x ${i.name}${sizeStr} — $${(i.price * i.quantity).toFixed(2)}`;
+        return `${i.quantity}x ${i.name}${sizeStr} - $${(i.price * i.quantity).toFixed(2)}`;
       });
-      const msg = `🛒 *New SneakersPlug Order*\n\n` +
-        `*Name:* ${form.name}\n*Phone:* ${form.phone}\n*City:* ${form.city}\n*Address:* ${form.address}\n\n` +
-        `*Items:*\n${lines.join("\n")}\n\n*Total: $${subtotal.toFixed(2)}*`;
-      const waUrl = `https://wa.me/263781830006?text=${encodeURIComponent(msg)}`;
+      const msg = `New ${store?.name ?? "store"} order\n\n` +
+        `Name: ${form.name}\nPhone: ${form.phone}\nEmail: ${form.email}\nCity: ${form.city}\nAddress: ${form.address}\n\n` +
+        `Items:\n${lines.join("\n")}\n\nTotal: $${subtotal.toFixed(2)}`;
+      const phone = store?.order_notification_phone?.replace(/\D/g, "");
 
       clearCart();
-      window.open(waUrl, "_blank");
+      if (phone) window.open(`https://wa.me/${phone}?text=${encodeURIComponent(msg)}`, "_blank");
       navigate({ to: "/" });
     } catch {
       alert("Failed to place order. Please try again.");
@@ -85,6 +99,10 @@ function CheckoutPage() {
         <div>
           <label className="text-xs uppercase tracking-wider text-muted-foreground">Phone Number</label>
           <Input value={form.phone} onChange={(e) => setForm((f) => ({ ...f, phone: e.target.value }))} required className="mt-1" />
+        </div>
+        <div>
+          <label className="text-xs uppercase tracking-wider text-muted-foreground">Email</label>
+          <Input type="email" value={form.email} onChange={(e) => setForm((f) => ({ ...f, email: e.target.value }))} required className="mt-1" />
         </div>
         <div>
           <label className="text-xs uppercase tracking-wider text-muted-foreground">City</label>
@@ -110,7 +128,7 @@ function CheckoutPage() {
         </div>
 
         <Button type="submit" disabled={submitting || !form.city} className="w-full uppercase tracking-widest text-xs h-11">
-          {submitting ? "Placing order…" : "Place Order via WhatsApp"}
+          {submitting ? "Placing order..." : "Place Order"}
         </Button>
       </form>
     </div>

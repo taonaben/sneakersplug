@@ -5,6 +5,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Trash2 } from "lucide-react";
+import { useAdminStores, slugify } from "@/hooks/useAdminStores";
 
 export const Route = createFileRoute("/admin/categories")({
   component: AdminCategories,
@@ -12,13 +13,15 @@ export const Route = createFileRoute("/admin/categories")({
 
 function AdminCategories() {
   const qc = useQueryClient();
+  const { selectedStore, selectedStoreId, isLoading: storesLoading } = useAdminStores();
   const [name, setName] = useState("");
   const [sortOrder, setSortOrder] = useState("0");
 
   const { data: categories, isLoading } = useQuery({
-    queryKey: ["categories"],
+    queryKey: ["categories", selectedStoreId],
+    enabled: !!selectedStoreId,
     queryFn: async () => {
-      const { data, error } = await supabase.from("categories").select("*").order("sort_order");
+      const { data, error } = await supabase.from("categories").select("*").eq("store_id", selectedStoreId).order("sort_order");
       if (error) throw error;
       return data;
     },
@@ -26,11 +29,12 @@ function AdminCategories() {
 
   const addMutation = useMutation({
     mutationFn: async () => {
-      const slug = name.trim().toLowerCase().replace(/\s+/g, "-").replace(/[^a-z0-9-]/g, "");
-      const { error } = await supabase.from("categories").insert({ name: name.trim(), slug, sort_order: parseInt(sortOrder) });
+      if (!selectedStoreId) throw new Error("Select a store before adding categories.");
+      const slug = slugify(name);
+      const { error } = await supabase.from("categories").insert({ store_id: selectedStoreId, name: name.trim(), slug, sort_order: parseInt(sortOrder) } as any);
       if (error) throw error;
     },
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ["categories"] }); setName(""); setSortOrder("0"); },
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ["categories", selectedStoreId] }); setName(""); setSortOrder("0"); },
   });
 
   const deleteMutation = useMutation({
@@ -38,12 +42,15 @@ function AdminCategories() {
       const { error } = await supabase.from("categories").delete().eq("id", id);
       if (error) throw error;
     },
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["categories"] }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["categories", selectedStoreId] }),
   });
+
+  if (storesLoading) return <p className="text-xs text-muted-foreground">Loading...</p>;
+  if (!selectedStore) return <p className="text-xs text-muted-foreground">Create a store before adding categories.</p>;
 
   return (
     <div className="max-w-md">
-      <h2 className="text-sm font-bold uppercase tracking-wider mb-4">Categories</h2>
+      <h2 className="text-sm font-bold uppercase tracking-wider mb-4">Categories - {selectedStore.name}</h2>
       <form onSubmit={(e) => { e.preventDefault(); addMutation.mutate(); }} className="flex gap-2 mb-6">
         <Input placeholder="Category name" value={name} onChange={(e) => setName(e.target.value)} required className="flex-1" />
         <Input placeholder="Order" type="number" value={sortOrder} onChange={(e) => setSortOrder(e.target.value)} className="w-16" />

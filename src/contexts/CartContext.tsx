@@ -2,6 +2,7 @@ import { createContext, useContext, useState, useEffect, type ReactNode } from "
 
 export interface CartItem {
   id: string;
+  store_id: string;
   name: string;
   price: number;
   image_url: string | null;
@@ -43,11 +44,12 @@ export function CartProvider({ children }: { children: ReactNode }) {
 
   const addItem = (item: Omit<CartItem, "quantity">) => {
     setItems((prev) => {
+      const sameStoreItems = prev.filter((i) => i.store_id === item.store_id);
       const existing = prev.find((i) => i.id === item.id && i.size_id === item.size_id);
       if (existing) {
         return prev.map((i) => (i.id === item.id && i.size_id === item.size_id ? { ...i, quantity: i.quantity + 1 } : i));
       }
-      return [...prev, { ...item, quantity: 1 }];
+      return [...sameStoreItems, { ...item, quantity: 1 }];
     });
   };
 

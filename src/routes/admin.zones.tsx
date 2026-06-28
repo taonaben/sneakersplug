@@ -1,7 +1,11 @@
 import { createFileRoute } from "@tanstack/react-router";
+import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { Switch } from "@/components/ui/switch";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { useAdminStores } from "@/hooks/useAdminStores";
 
 export const Route = createFileRoute("/admin/zones")({
   component: AdminZones,
@@ -9,13 +13,28 @@ export const Route = createFileRoute("/admin/zones")({
 
 function AdminZones() {
   const qc = useQueryClient();
+  const { selectedStore, selectedStoreId, isLoading: storesLoading } = useAdminStores();
+  const [name, setName] = useState("");
 
   const { data: zones, isLoading } = useQuery({
-    queryKey: ["admin-zones"],
+    queryKey: ["admin-zones", selectedStoreId],
+    enabled: !!selectedStoreId,
     queryFn: async () => {
-      const { data, error } = await supabase.from("delivery_zones").select("*").order("name");
+      const { data, error } = await supabase.from("delivery_zones").select("*").eq("store_id", selectedStoreId).order("name");
       if (error) throw error;
       return data;
+    },
+  });
+
+  const addMutation = useMutation({
+    mutationFn: async () => {
+      if (!selectedStoreId) throw new Error("Select a store before adding delivery zones.");
+      const { error } = await supabase.from("delivery_zones").insert({ store_id: selectedStoreId, name: name.trim(), active: true } as any);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["admin-zones", selectedStoreId] });
+      setName("");
     },
   });
 
@@ -24,14 +43,25 @@ function AdminZones() {
       const { error } = await supabase.from("delivery_zones").update({ active }).eq("id", id);
       if (error) throw error;
     },
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["admin-zones"] }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["admin-zones", selectedStoreId] }),
   });
 
-  if (isLoading) return <p className="text-xs text-muted-foreground">Loading…</p>;
+  if (storesLoading || isLoading) return <p className="text-xs text-muted-foreground">Loading...</p>;
+  if (!selectedStore) return <p className="text-xs text-muted-foreground">Create a store before adding delivery zones.</p>;
 
   return (
     <div className="max-w-md">
-      <h2 className="text-sm font-bold uppercase tracking-wider mb-4">Delivery Zones</h2>
+      <h2 className="text-sm font-bold uppercase tracking-wider mb-4">Delivery Zones - {selectedStore.name}</h2>
+      <form
+        onSubmit={(e) => {
+          e.preventDefault();
+          addMutation.mutate();
+        }}
+        className="flex gap-2 mb-6"
+      >
+        <Input placeholder="Zone name" value={name} onChange={(e) => setName(e.target.value)} required />
+        <Button type="submit" disabled={addMutation.isPending} className="text-xs uppercase">Add</Button>
+      </form>
       <div className="space-y-2">
         {zones?.map((z) => (
           <div key={z.id} className="flex items-center justify-between border border-border p-3">

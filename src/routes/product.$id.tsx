@@ -268,7 +268,7 @@ function ProductDetail() {
     if (hasSizes) {
       setSizeOpen(true);
     } else {
-      addItem({ id: product.id, name: product.name, price: product.price, image_url: product.image_url });
+      addItem({ id: product.id, store_id: product.store_id, name: product.name, price: product.price, image_url: product.image_url });
     }
   };
 
@@ -276,6 +276,7 @@ function ProductDetail() {
     if (!product) return;
     addItem({
       id: product.id,
+      store_id: product.store_id,
       name: product.name,
       price: product.price,
       image_url: product.image_url,

@@ -7,8 +7,6 @@ export type Json =
   | Json[]
 
 export type Database = {
-  // Allows to automatically instantiate createClient with right options
-  // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
   __InternalSupabase: {
     PostgrestVersion: "14.5"
   }
@@ -21,6 +19,7 @@ export type Database = {
           name: string
           slug: string
           sort_order: number
+          store_id: string
         }
         Insert: {
           created_at?: string
@@ -28,6 +27,7 @@ export type Database = {
           name: string
           slug: string
           sort_order?: number
+          store_id: string
         }
         Update: {
           created_at?: string
@@ -35,8 +35,17 @@ export type Database = {
           name?: string
           slug?: string
           sort_order?: number
+          store_id?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "categories_store_id_fkey"
+            columns: ["store_id"]
+            isOneToOne: false
+            referencedRelation: "stores"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       delivery_zones: {
         Row: {
@@ -44,20 +53,31 @@ export type Database = {
           created_at: string
           id: string
           name: string
+          store_id: string
         }
         Insert: {
           active?: boolean
           created_at?: string
           id?: string
           name: string
+          store_id: string
         }
         Update: {
           active?: boolean
           created_at?: string
           id?: string
           name?: string
+          store_id?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "delivery_zones_store_id_fkey"
+            columns: ["store_id"]
+            isOneToOne: false
+            referencedRelation: "stores"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       orders: {
         Row: {
@@ -65,10 +85,12 @@ export type Database = {
           city: string
           created_at: string
           customer_name: string
+          email: string
           id: string
           items: Json
           phone: string
           status: Database["public"]["Enums"]["order_status"]
+          store_id: string
           total: number
           updated_at: string
         }
@@ -77,10 +99,12 @@ export type Database = {
           city: string
           created_at?: string
           customer_name: string
+          email: string
           id?: string
           items: Json
           phone: string
           status?: Database["public"]["Enums"]["order_status"]
+          store_id: string
           total: number
           updated_at?: string
         }
@@ -89,12 +113,49 @@ export type Database = {
           city?: string
           created_at?: string
           customer_name?: string
+          email?: string
           id?: string
           items?: Json
           phone?: string
           status?: Database["public"]["Enums"]["order_status"]
+          store_id?: string
           total?: number
           updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "orders_store_id_fkey"
+            columns: ["store_id"]
+            isOneToOne: false
+            referencedRelation: "stores"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      owner_profiles: {
+        Row: {
+          created_at: string
+          display_name: string | null
+          email: string | null
+          phone: string | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          display_name?: string | null
+          email?: string | null
+          phone?: string | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          display_name?: string | null
+          email?: string | null
+          phone?: string | null
+          updated_at?: string
+          user_id?: string
         }
         Relationships: []
       }
@@ -107,6 +168,7 @@ export type Database = {
           name: string
           price: number
           stock: number
+          store_id: string
           updated_at: string
         }
         Insert: {
@@ -117,6 +179,7 @@ export type Database = {
           name: string
           price: number
           stock?: number
+          store_id: string
           updated_at?: string
         }
         Update: {
@@ -127,6 +190,7 @@ export type Database = {
           name?: string
           price?: number
           stock?: number
+          store_id?: string
           updated_at?: string
         }
         Relationships: [
@@ -137,29 +201,36 @@ export type Database = {
             referencedRelation: "categories"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "products_store_id_fkey"
+            columns: ["store_id"]
+            isOneToOne: false
+            referencedRelation: "stores"
+            referencedColumns: ["id"]
+          },
         ]
       }
       product_images: {
         Row: {
-          id: string
-          product_id: string
-          image_url: string
-          sort_order: number
           created_at: string
+          id: string
+          image_url: string
+          product_id: string
+          sort_order: number
         }
         Insert: {
-          id?: string
-          product_id: string
-          image_url: string
-          sort_order?: number
           created_at?: string
+          id?: string
+          image_url: string
+          product_id: string
+          sort_order?: number
         }
         Update: {
-          id?: string
-          product_id?: string
-          image_url?: string
-          sort_order?: number
           created_at?: string
+          id?: string
+          image_url?: string
+          product_id?: string
+          sort_order?: number
         }
         Relationships: [
           {
@@ -173,31 +244,31 @@ export type Database = {
       }
       product_sizes: {
         Row: {
-          id: string
-          product_id: string
-          label: string
           alt_label: string | null
-          stock: number
-          sort_order: number
           created_at: string
+          id: string
+          label: string
+          product_id: string
+          sort_order: number
+          stock: number
         }
         Insert: {
-          id?: string
-          product_id: string
-          label: string
           alt_label?: string | null
-          stock?: number
-          sort_order?: number
           created_at?: string
+          id?: string
+          label: string
+          product_id: string
+          sort_order?: number
+          stock?: number
         }
         Update: {
-          id?: string
-          product_id?: string
-          label?: string
           alt_label?: string | null
-          stock?: number
-          sort_order?: number
           created_at?: string
+          id?: string
+          label?: string
+          product_id?: string
+          sort_order?: number
+          stock?: number
         }
         Relationships: [
           {
@@ -208,6 +279,95 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      short_links: {
+        Row: {
+          active: boolean
+          click_count: number
+          code: string
+          created_at: string
+          expires_at: string | null
+          id: string
+          long_path: string
+          owner_id: string
+          store_id: string
+          target_id: string | null
+          target_type: string
+        }
+        Insert: {
+          active?: boolean
+          click_count?: number
+          code: string
+          created_at?: string
+          expires_at?: string | null
+          id?: string
+          long_path: string
+          owner_id: string
+          store_id: string
+          target_id?: string | null
+          target_type: string
+        }
+        Update: {
+          active?: boolean
+          click_count?: number
+          code?: string
+          created_at?: string
+          expires_at?: string | null
+          id?: string
+          long_path?: string
+          owner_id?: string
+          store_id?: string
+          target_id?: string | null
+          target_type?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "short_links_store_id_fkey"
+            columns: ["store_id"]
+            isOneToOne: false
+            referencedRelation: "stores"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      stores: {
+        Row: {
+          active: boolean
+          created_at: string
+          description: string | null
+          id: string
+          logo_url: string | null
+          name: string
+          order_notification_phone: string | null
+          owner_id: string
+          slug: string
+          updated_at: string
+        }
+        Insert: {
+          active?: boolean
+          created_at?: string
+          description?: string | null
+          id?: string
+          logo_url?: string | null
+          name: string
+          order_notification_phone?: string | null
+          owner_id: string
+          slug: string
+          updated_at?: string
+        }
+        Update: {
+          active?: boolean
+          created_at?: string
+          description?: string | null
+          id?: string
+          logo_url?: string | null
+          name?: string
+          order_notification_phone?: string | null
+          owner_id?: string
+          slug?: string
+          updated_at?: string
+        }
+        Relationships: []
       }
       user_roles: {
         Row: {
@@ -232,12 +392,37 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      ensure_product_category_matches_store: {
+        Args: Record<PropertyKey, never>
+        Returns: unknown
+      }
+      ensure_product_gallery_image_limit: {
+        Args: Record<PropertyKey, never>
+        Returns: unknown
+      }
+      ensure_store_owner_limit: {
+        Args: Record<PropertyKey, never>
+        Returns: unknown
+      }
       has_role: {
         Args: {
           _role: Database["public"]["Enums"]["app_role"]
           _user_id: string
         }
         Returns: boolean
+      }
+      is_store_owner: {
+        Args: {
+          _store_id: string
+          _user_id?: string
+        }
+        Returns: boolean
+      }
+      storage_object_store_id: {
+        Args: {
+          object_name: string
+        }
+        Returns: string | null
       }
     }
     Enums: {
