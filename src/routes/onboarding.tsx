@@ -24,18 +24,56 @@ function readableError(message: string) {
   return message;
 }
 
-async function getUserAfterAuthRedirect() {
+async function getCurrentAuthUser() {
   const { data: sessionData } = await supabase.auth.getSession();
   if (sessionData.session?.user) return sessionData.session.user;
 
   const { data: userData } = await supabase.auth.getUser();
-  if (userData.user) return userData.user;
+  return userData.user;
+}
 
-  return new Promise<typeof userData.user>((resolve) => {
+function getAuthCallbackParams() {
+  if (typeof window === "undefined") return { code: null, error: null, isCallback: false };
+
+  const url = new URL(window.location.href);
+  const hashParams = new URLSearchParams(url.hash.replace(/^#/, ""));
+  const code = url.searchParams.get("code");
+  const error =
+    url.searchParams.get("error_description") ??
+    url.searchParams.get("error") ??
+    hashParams.get("error_description") ??
+    hashParams.get("error");
+
+  return { code, error, isCallback: Boolean(code || error || hashParams.get("access_token")) };
+}
+
+function clearAuthCallbackParams() {
+  if (typeof window === "undefined") return;
+
+  const url = new URL(window.location.href);
+  ["code", "error", "error_code", "error_description"].forEach((param) => url.searchParams.delete(param));
+  window.history.replaceState({}, document.title, `${url.pathname}${url.search}`);
+}
+
+async function getUserAfterAuthRedirect() {
+  const { code, error: callbackError, isCallback } = getAuthCallbackParams();
+  if (callbackError) throw new Error(callbackError);
+
+  let exchangeError = "";
+  if (code) {
+    const { error } = await supabase.auth.exchangeCodeForSession(code);
+    if (error) exchangeError = error.message;
+    else clearAuthCallbackParams();
+  }
+
+  const currentUser = await getCurrentAuthUser();
+  if (currentUser) return currentUser;
+
+  const user = await new Promise<Awaited<ReturnType<typeof getCurrentAuthUser>>>((resolve) => {
     let settled = false;
     let unsubscribe = () => {};
 
-    const finish = (user: typeof userData.user) => {
+    const finish = (user: Awaited<ReturnType<typeof getCurrentAuthUser>>) => {
       if (settled) return;
       settled = true;
       window.clearTimeout(timeout);
@@ -43,13 +81,18 @@ async function getUserAfterAuthRedirect() {
       resolve(user);
     };
 
-    const timeout = window.setTimeout(() => finish(null), 2500);
+    const timeout = window.setTimeout(() => finish(null), isCallback ? 8000 : 2500);
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       if (session?.user) finish(session.user);
     });
     unsubscribe = () => subscription.unsubscribe();
     if (settled) unsubscribe();
   });
+
+  if (user) return user;
+  if (exchangeError) throw new Error(exchangeError);
+
+  return null;
 }
 
 function OnboardingPage() {
@@ -70,30 +113,35 @@ function OnboardingPage() {
 
   useEffect(() => {
     const load = async () => {
-      const user = await getUserAfterAuthRedirect();
-      if (!user) {
-        navigate({ to: "/login" });
-        return;
-      }
+      try {
+        const user = await getUserAfterAuthRedirect();
+        if (!user) {
+          navigate({ to: "/login" });
+          return;
+        }
 
-      const { data: stores, error: storesError } = await supabase.from("stores").select("id").eq("owner_id", user.id).limit(1);
-      if (storesError) {
-        setError(storesError.message);
+        const { data: stores, error: storesError } = await supabase.from("stores").select("id").eq("owner_id", user.id).limit(1);
+        if (storesError) {
+          setError(storesError.message);
+          setLoading(false);
+          return;
+        }
+
+        if ((stores?.length ?? 0) > 0) {
+          navigate({ to: "/admin" });
+          return;
+        }
+
+        const { data: profile } = await supabase.from("owner_profiles").select("*").eq("user_id", user.id).maybeSingle();
+        setUserId(user.id);
+        setEmail(user.email ?? "");
+        setDisplayName(profile?.display_name ?? "");
+        setOwnerPhone(profile?.phone ?? "");
         setLoading(false);
-        return;
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Could not confirm your session. Please sign in.");
+        setLoading(false);
       }
-
-      if ((stores?.length ?? 0) > 0) {
-        navigate({ to: "/admin" });
-        return;
-      }
-
-      const { data: profile } = await supabase.from("owner_profiles").select("*").eq("user_id", user.id).maybeSingle();
-      setUserId(user.id);
-      setEmail(user.email ?? "");
-      setDisplayName(profile?.display_name ?? "");
-      setOwnerPhone(profile?.phone ?? "");
-      setLoading(false);
     };
 
     load();
@@ -175,6 +223,22 @@ function OnboardingPage() {
   };
 
   if (loading) return <div className="flex min-h-screen items-center justify-center text-sm text-muted-foreground">Loading...</div>;
+
+  if (!userId) {
+    return (
+      <div className="flex min-h-screen items-center justify-center px-4 py-10">
+        <div className="w-full max-w-xs space-y-4 text-center">
+          <h1 className="text-sm font-bold uppercase tracking-wider">Confirm Your Account</h1>
+          <p className="text-xs text-muted-foreground">
+            {error || "We could not finish confirming your account in this tab."}
+          </p>
+          <Button onClick={() => navigate({ to: "/login" })} className="w-full uppercase tracking-widest text-xs h-10">
+            Back to Login
+          </Button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="flex min-h-screen items-center justify-center px-4 py-10">
