@@ -1,5 +1,5 @@
 import { Link, createFileRoute } from "@tanstack/react-router";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
@@ -7,6 +7,8 @@ import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { Field } from "@/components/admin/Field";
 import { useAdminStores, slugify } from "@/hooks/useAdminStores";
+import { cn } from "@/lib/utils";
+import { Share2 } from "lucide-react";
 
 export const Route = createFileRoute("/admin/stores")({
   component: AdminStores,
@@ -16,11 +18,40 @@ function AdminStores() {
   const qc = useQueryClient();
   const { user, stores, selectedStoreId, setSelectedStoreId, isLoading } = useAdminStores();
   const [form, setForm] = useState({ name: "", slug: "", order_notification_phone: "" });
+  const [slugManuallyEdited, setSlugManuallyEdited] = useState(false);
+  const [debouncedSlug, setDebouncedSlug] = useState("");
+  const [slugTaken, setSlugTaken] = useState(false);
+
+  useEffect(() => {
+    const timeout = window.setTimeout(() => setDebouncedSlug(form.slug.trim()), 350);
+    return () => window.clearTimeout(timeout);
+  }, [form.slug]);
+
+  useEffect(() => {
+    let active = true;
+
+    const checkSlug = async () => {
+      if (!debouncedSlug) {
+        setSlugTaken(false);
+        return;
+      }
+
+      const { data, error } = await supabase.from("stores").select("id").eq("slug", debouncedSlug).maybeSingle();
+      if (!active) return;
+      setSlugTaken(Boolean(!error && data));
+    };
+
+    checkSlug();
+    return () => {
+      active = false;
+    };
+  }, [debouncedSlug]);
 
   const createStore = useMutation({
     mutationFn: async () => {
       if (!user) throw new Error("You must be signed in to create a store.");
       const slug = form.slug.trim() || slugify(form.name);
+      if (slugTaken) throw new Error("That store link is already taken. Try another link.");
       const { data, error } = await supabase
         .from("stores")
         .insert({
@@ -38,6 +69,7 @@ function AdminStores() {
       await qc.invalidateQueries({ queryKey: ["owned-stores", user?.id] });
       setSelectedStoreId(storeId);
       setForm({ name: "", slug: "", order_notification_phone: "" });
+      setSlugManuallyEdited(false);
     },
   });
 
@@ -48,6 +80,26 @@ function AdminStores() {
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ["owned-stores", user?.id] }),
   });
+
+  const shareStore = async (store: (typeof stores)[number]) => {
+    const url = new URL(`/s/${store.slug}`, window.location.origin).toString();
+    const shareData: ShareData = {
+      title: store.name,
+      text: store.name,
+      url,
+    };
+
+    try {
+      if (navigator.share) {
+        await navigator.share(shareData);
+        return;
+      }
+
+      await navigator.clipboard.writeText(url);
+    } catch (error) {
+      if (!(error instanceof DOMException && error.name === "AbortError")) throw error;
+    }
+  };
 
   if (isLoading) return <p className="text-xs text-muted-foreground">Loading...</p>;
 
@@ -69,12 +121,17 @@ function AdminStores() {
                     <p className="text-xs font-bold uppercase tracking-wider">{store.name}</p>
                     <p className="truncate text-[10px] text-muted-foreground">/s/{store.slug}</p>
                   </div>
-                  <div className="flex items-center gap-3">
-                    <span className="text-[10px] uppercase tracking-wider text-muted-foreground">Active</span>
-                    <Switch
-                      checked={store.active}
-                      onCheckedChange={(active) => updateStore.mutate({ id: store.id, patch: { active } })}
-                    />
+                  <div className="flex items-center gap-2">
+                    <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => shareStore(store)} aria-label={`Share ${store.name}`}>
+                      <Share2 className="h-3.5 w-3.5" />
+                    </Button>
+                    <div className="flex items-center gap-3">
+                      <span className="text-[10px] uppercase tracking-wider text-muted-foreground">Active</span>
+                      <Switch
+                        checked={store.active}
+                        onCheckedChange={(active) => updateStore.mutate({ id: store.id, patch: { active } })}
+                      />
+                    </div>
                   </div>
                 </div>
                 <div className="grid gap-2 md:grid-cols-[1fr_1fr_auto] md:items-start">
@@ -133,7 +190,14 @@ function AdminStores() {
             <Input
               placeholder="store name"
               value={form.name}
-              onChange={(e) => setForm((current) => ({ ...current, name: e.target.value, slug: current.slug || slugify(e.target.value) }))}
+              onChange={(e) => {
+                const name = e.target.value;
+                setForm((current) => ({
+                  ...current,
+                  name,
+                  slug: slugManuallyEdited ? current.slug : slugify(name),
+                }));
+              }}
               required
             />
           </Field>
@@ -141,9 +205,14 @@ function AdminStores() {
             <Input
               placeholder="store-link"
               value={form.slug}
-              onChange={(e) => setForm((current) => ({ ...current, slug: slugify(e.target.value) }))}
+              onChange={(e) => {
+                setSlugManuallyEdited(true);
+                setForm((current) => ({ ...current, slug: slugify(e.target.value) }));
+              }}
+              className={cn(slugTaken && "border-destructive focus-visible:ring-destructive")}
               required
             />
+            {slugTaken && <p className="text-xs text-destructive">That store link is taken. Try another link.</p>}
           </Field>
           <Field label="Order Text Number" helper="Receives WhatsApp order messages.">
             <Input
@@ -153,7 +222,7 @@ function AdminStores() {
             />
           </Field>
           <div className="flex items-center md:pt-[22px]">
-            <Button type="submit" disabled={createStore.isPending || stores.length >= 3} className="h-9 w-full text-xs uppercase tracking-widest">
+            <Button type="submit" disabled={createStore.isPending || stores.length >= 3 || slugTaken} className="h-9 w-full text-xs uppercase tracking-widest">
               {stores.length >= 3 ? "Store Limit Reached" : createStore.isPending ? "Creating..." : "Create Store"}
             </Button>
           </div>

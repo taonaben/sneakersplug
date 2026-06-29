@@ -80,7 +80,7 @@ function LoginPage() {
 
     const emailRedirectTo =
       typeof window !== "undefined"
-        ? `${window.location.origin}/login?mode=register&verified=1${redirect ? `&redirect=${encodeURIComponent(redirect)}` : ""}`
+        ? `${window.location.origin}/onboarding`
         : undefined;
 
     const { data, error: signUpError } = await supabase.auth.signUp({

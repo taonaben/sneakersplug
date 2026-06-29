@@ -6,6 +6,7 @@ import { Input } from "@/components/ui/input";
 import { saveSelectedStoreId } from "@/lib/adminStoreSelection";
 import { slugify } from "@/hooks/useAdminStores";
 import { APP_NAME } from "@/lib/storefront";
+import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/onboarding")({
   head: () => ({
@@ -23,6 +24,34 @@ function readableError(message: string) {
   return message;
 }
 
+async function getUserAfterAuthRedirect() {
+  const { data: sessionData } = await supabase.auth.getSession();
+  if (sessionData.session?.user) return sessionData.session.user;
+
+  const { data: userData } = await supabase.auth.getUser();
+  if (userData.user) return userData.user;
+
+  return new Promise<typeof userData.user>((resolve) => {
+    let settled = false;
+    let unsubscribe = () => {};
+
+    const finish = (user: typeof userData.user) => {
+      if (settled) return;
+      settled = true;
+      window.clearTimeout(timeout);
+      unsubscribe();
+      resolve(user);
+    };
+
+    const timeout = window.setTimeout(() => finish(null), 2500);
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (session?.user) finish(session.user);
+    });
+    unsubscribe = () => subscription.unsubscribe();
+    if (settled) unsubscribe();
+  });
+}
+
 function OnboardingPage() {
   const navigate = useNavigate();
   const [userId, setUserId] = useState("");
@@ -31,6 +60,9 @@ function OnboardingPage() {
   const [ownerPhone, setOwnerPhone] = useState("");
   const [storeName, setStoreName] = useState("");
   const [storeSlug, setStoreSlug] = useState("");
+  const [slugManuallyEdited, setSlugManuallyEdited] = useState(false);
+  const [debouncedStoreSlug, setDebouncedStoreSlug] = useState("");
+  const [storeSlugTaken, setStoreSlugTaken] = useState(false);
   const [orderPhone, setOrderPhone] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
@@ -38,7 +70,7 @@ function OnboardingPage() {
 
   useEffect(() => {
     const load = async () => {
-      const { data: { user } } = await supabase.auth.getUser();
+      const user = await getUserAfterAuthRedirect();
       if (!user) {
         navigate({ to: "/login" });
         return;
@@ -67,11 +99,37 @@ function OnboardingPage() {
     load();
   }, [navigate]);
 
+  useEffect(() => {
+    const timeout = window.setTimeout(() => setDebouncedStoreSlug(storeSlug.trim()), 350);
+    return () => window.clearTimeout(timeout);
+  }, [storeSlug]);
+
+  useEffect(() => {
+    let active = true;
+
+    const checkSlug = async () => {
+      if (!debouncedStoreSlug) {
+        setStoreSlugTaken(false);
+        return;
+      }
+
+      const { data, error } = await supabase.from("stores").select("id").eq("slug", debouncedStoreSlug).maybeSingle();
+      if (!active) return;
+      setStoreSlugTaken(Boolean(!error && data));
+    };
+
+    checkSlug();
+    return () => {
+      active = false;
+    };
+  }, [debouncedStoreSlug]);
+
   const validate = () => {
-    if (!displayName.trim()) return "Enter your display name.";
+    if (!displayName.trim()) return "Enter your name.";
     if (!ownerPhone.trim()) return "Enter your phone number.";
     if (!storeName.trim()) return "Enter your store name.";
     if (!storeSlug.trim()) return "Enter your store link.";
+    if (storeSlugTaken) return "That store link is already taken. Try another link.";
     if (!orderPhone.trim()) return "Enter the phone number that should receive order texts.";
     return "";
   };
@@ -126,8 +184,8 @@ function OnboardingPage() {
           <div>
             <p className="mb-2 text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Owner Profile</p>
             <div className="space-y-3">
-              <Input placeholder="Display name" value={displayName} onChange={(e) => setDisplayName(e.target.value)} required />
-              <Input placeholder="Owner phone number" value={ownerPhone} onChange={(e) => setOwnerPhone(e.target.value)} required />
+              <Input placeholder="Your name" value={displayName} onChange={(e) => setDisplayName(e.target.value)} required />
+              <Input placeholder="Your phone number" value={ownerPhone} onChange={(e) => setOwnerPhone(e.target.value)} required />
             </div>
           </div>
 
@@ -140,16 +198,21 @@ function OnboardingPage() {
                 onChange={(e) => {
                   const name = e.target.value;
                   setStoreName(name);
-                  setStoreSlug((current) => current || slugify(name));
+                  if (!slugManuallyEdited) setStoreSlug(slugify(name));
                 }}
                 required
               />
               <Input
                 placeholder="Store link"
                 value={storeSlug}
-                onChange={(e) => setStoreSlug(slugify(e.target.value))}
+                onChange={(e) => {
+                  setSlugManuallyEdited(true);
+                  setStoreSlug(slugify(e.target.value));
+                }}
+                className={cn(storeSlugTaken && "border-destructive focus-visible:ring-destructive")}
                 required
               />
+              {storeSlugTaken && <p className="-mt-1 text-xs text-destructive">That store link is taken. Try another link.</p>}
               <Input
                 placeholder="Order text phone number"
                 value={orderPhone}
