@@ -1,10 +1,11 @@
 import { Outlet, createFileRoute, useLocation } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Grid3X3, LayoutGrid } from "lucide-react";
 import { ProductCard } from "@/components/ProductCard";
 import { supabase } from "@/integrations/supabase/client";
 import { fetchActiveStoreBySlug } from "@/lib/storefront";
+import { getProductListKey, useProductStore } from "@/state/product_store";
 
 export const Route = createFileRoute("/s/$slug")({
   head: ({ params }) => ({
@@ -31,11 +32,19 @@ function StorefrontPage() {
   const [expanded, setExpanded] = useState(false);
   const [activeCategory, setActiveCategory] = useState<string | null>(null);
   const isNestedRoute = location.pathname !== `/s/${slug}`;
+  const loadStoreProducts = useProductStore((state) => state.loadStoreProducts);
 
   const { data: store, isLoading: storeLoading } = useQuery({
     queryKey: ["active-store", slug],
     queryFn: () => fetchActiveStoreBySlug(slug),
   });
+
+  const productListKey = store?.id ? getProductListKey(store.id, activeCategory) : null;
+  const productIds = useProductStore((state) => (productListKey ? state.listIdsByKey[productListKey] : undefined));
+  const productsById = useProductStore((state) => state.productsById);
+  const productsLoading = useProductStore((state) => (productListKey ? state.listLoadingByKey[productListKey] : false));
+  const productsError = useProductStore((state) => (productListKey ? state.listErrorsByKey[productListKey] : null));
+  const products = productIds?.map((id) => productsById[id]).filter((product): product is NonNullable<typeof product> => Boolean(product));
 
   const { data: categories } = useQuery({
     queryKey: ["store-categories", store?.id],
@@ -51,21 +60,12 @@ function StorefrontPage() {
     },
   });
 
-  const { data: products, isLoading: productsLoading } = useQuery({
-    queryKey: ["store-products", store?.id, activeCategory],
-    enabled: !!store?.id,
-    queryFn: async () => {
-      let query = supabase
-        .from("products")
-        .select("*")
-        .eq("store_id", store!.id)
-        .order("created_at", { ascending: false });
-      if (activeCategory) query = query.eq("category_id", activeCategory);
-      const { data, error } = await query;
-      if (error) throw error;
-      return data;
-    },
-  });
+  useEffect(() => {
+    if (!store?.id) return;
+    loadStoreProducts(store.id, activeCategory).catch((error) => {
+      console.error("Failed to load storefront products", error);
+    });
+  }, [loadStoreProducts, store?.id, activeCategory]);
 
   if (storeLoading) {
     return (
@@ -112,7 +112,9 @@ function StorefrontPage() {
         </button>
       </div>
 
-      {productsLoading ? (
+      {productsError ? (
+        <p className="py-20 text-center text-sm text-muted-foreground">{productsError}</p>
+      ) : productsLoading || !products ? (
         <div className={`grid gap-4 ${expanded ? "grid-cols-2 md:grid-cols-3" : "grid-cols-3 md:grid-cols-6"}`}>
           {Array.from({ length: 12 }).map((_, i) => <div key={i} className="aspect-square animate-pulse bg-secondary" />)}
         </div>

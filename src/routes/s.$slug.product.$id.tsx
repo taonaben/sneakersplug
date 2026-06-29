@@ -4,54 +4,29 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { ArrowLeft, ChevronLeft, ChevronRight, Share2, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useCart } from "@/contexts/CartContext";
-import { supabase } from "@/integrations/supabase/client";
 import type { Tables } from "@/integrations/supabase/types";
 import { fetchActiveStoreBySlug } from "@/lib/storefront";
 import { formatSelectedOptions, parseAttributes, selectedOptionsFromJson } from "@/lib/productTypes";
 import { shareProduct } from "@/lib/productShare";
+import { getProductListKey, useProductStore, type ProductOptionWithValues } from "@/state/product_store";
 
 export const Route = createFileRoute("/s/$slug/product/$id")({
   validateSearch: (search: Record<string, unknown>) => ({
     cat: (search.cat as string) || undefined,
   }),
-  loader: async ({ params }) => {
-    const store = await fetchActiveStoreBySlug(params.slug);
-    if (!store) return null;
-
-    const { data, error } = await supabase
-      .from("products")
-      .select("id, name, price, image_url")
-      .eq("id", params.id)
-      .eq("store_id", store.id)
-      .maybeSingle();
-
-    if (error) throw error;
-    return { store, product: data };
-  },
-  head: ({ params, loaderData }) => {
-    const product = loaderData?.product;
-    const store = loaderData?.store;
-    const title = product ? `${product.name} - ${store?.name ?? params.slug}` : `${params.slug} - Product`;
-    const description = product ? `$${product.price.toFixed(2)} at ${store?.name ?? params.slug}` : "View this store product.";
-    const imageUrl = product?.image_url;
+  head: ({ params }) => {
+    const title = `${params.slug} - Product`;
+    const description = "View this store product.";
     const meta = [
       { title },
       { name: "description", content: description },
       { property: "og:title", content: title },
       { property: "og:description", content: description },
       { property: "og:type", content: "product" },
-      { name: "twitter:card", content: imageUrl ? "summary_large_image" : "summary" },
+      { name: "twitter:card", content: "summary" },
       { name: "twitter:title", content: title },
       { name: "twitter:description", content: description },
     ];
-
-    if (imageUrl) {
-      meta.push(
-        { property: "og:image", content: imageUrl },
-        { property: "og:image:secure_url", content: imageUrl },
-        { name: "twitter:image", content: imageUrl },
-      );
-    }
 
     return { meta };
   },
@@ -67,10 +42,6 @@ function StoreNotFound() {
   );
 }
 
-interface OptionWithValues extends Tables<"product_options"> {
-  values: Tables<"product_option_values">[];
-}
-
 function VariantSelector({
   options,
   variants,
@@ -81,7 +52,7 @@ function VariantSelector({
   price,
   onClose,
 }: {
-  options: OptionWithValues[];
+  options: ProductOptionWithValues[];
   variants: Tables<"product_variants">[];
   selectedOptions: Record<string, string>;
   onSelectOption: (name: string, value: string) => void;
@@ -161,86 +132,31 @@ function StoreProductDetail() {
   const [selectedOptions, setSelectedOptions] = useState<Record<string, string>>({});
   const [imageIndex, setImageIndex] = useState(0);
   const [slideDir, setSlideDir] = useState<"up" | "down" | null>(null);
+  const [productMissing, setProductMissing] = useState(false);
   const touchStartX = useRef(0);
   const touchStartY = useRef(0);
   const touchEndX = useRef(0);
   const touchEndY = useRef(0);
   const hasSwiped = useRef(false);
   const productPageRef = useRef<HTMLDivElement | null>(null);
+  const loadProductDetail = useProductStore((state) => state.loadProductDetail);
+  const prefetchProductsAhead = useProductStore((state) => state.prefetchProductsAhead);
 
   const { data: store, isLoading: storeLoading } = useQuery({
     queryKey: ["active-store", slug],
     queryFn: () => fetchActiveStoreBySlug(slug),
   });
 
-  const { data: product, isLoading: productLoading } = useQuery({
-    queryKey: ["store-product", store?.id, id],
-    enabled: !!store?.id,
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from("products")
-        .select("*")
-        .eq("id", id)
-        .eq("store_id", store!.id)
-        .maybeSingle();
-      if (error) throw error;
-      return data;
-    },
-  });
-
-  const { data: extraImages } = useQuery({
-    queryKey: ["product-images", id],
-    enabled: !!product?.id,
-    queryFn: async () => {
-      const { data, error } = await supabase.from("product_images").select("*").eq("product_id", id).order("sort_order");
-      if (error) throw error;
-      return data;
-    },
-  });
-
-  const { data: options } = useQuery({
-    queryKey: ["product-options", id],
-    enabled: !!product?.id,
-    queryFn: async () => {
-      const { data, error } = await supabase.from("product_options").select("*").eq("product_id", id).order("sort_order");
-      if (error) throw error;
-      return data;
-    },
-  });
-
-  const optionIds = options?.map((option) => option.id) ?? [];
-
-  const { data: optionValues } = useQuery({
-    queryKey: ["product-option-values", optionIds.join(",")],
-    enabled: optionIds.length > 0,
-    queryFn: async () => {
-      const { data, error } = await supabase.from("product_option_values").select("*").in("option_id", optionIds).order("sort_order");
-      if (error) throw error;
-      return data;
-    },
-  });
-
-  const { data: variants } = useQuery({
-    queryKey: ["product-variants", id],
-    enabled: !!product?.id,
-    queryFn: async () => {
-      const { data, error } = await supabase.from("product_variants").select("*").eq("product_id", id).eq("active", true).order("sort_order");
-      if (error) throw error;
-      return data;
-    },
-  });
-
-  const { data: siblings } = useQuery({
-    queryKey: ["store-product-siblings", store?.id, cat || "all"],
-    enabled: !!store?.id,
-    queryFn: async () => {
-      let query = supabase.from("products").select("id").eq("store_id", store!.id).order("created_at", { ascending: false });
-      if (cat) query = query.eq("category_id", cat);
-      const { data, error } = await query;
-      if (error) throw error;
-      return data;
-    },
-  });
+  const productListKey = store?.id ? getProductListKey(store.id, cat) : null;
+  const detail = useProductStore((state) => state.detailsById[id]);
+  const detailLoading = useProductStore((state) => state.detailLoadingById[id]);
+  const detailError = useProductStore((state) => state.detailErrorsById[id]);
+  const siblingIdsFromList = useProductStore((state) => (productListKey ? state.listIdsByKey[productListKey] : undefined));
+  const product = detail?.product;
+  const extraImages = detail?.images ?? [];
+  const options = detail?.options ?? [];
+  const variants = detail?.variants ?? [];
+  const siblingIds = siblingIdsFromList ?? detail?.siblingIds;
 
   const allImages: string[] = [];
   if (product?.image_url) allImages.push(product.image_url);
@@ -252,7 +168,35 @@ function StoreProductDetail() {
   useEffect(() => {
     setImageIndex(0);
     setSelectedOptions({});
+    setProductMissing(false);
   }, [id]);
+
+  useEffect(() => {
+    if (!store?.id) return;
+
+    let cancelled = false;
+
+    loadProductDetail(store.id, id, cat)
+      .then((loadedDetail) => {
+        if (cancelled) return;
+
+        if (!loadedDetail) {
+          setProductMissing(true);
+          return;
+        }
+
+        prefetchProductsAhead(store.id, id, cat, 3).catch((error) => {
+          console.error("Failed to prefetch products", error);
+        });
+      })
+      .catch((error) => {
+        if (!cancelled) console.error("Failed to load product detail", error);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [loadProductDetail, prefetchProductsAhead, store?.id, id, cat]);
 
   const goToImage = useCallback(
     (dir: "prev" | "next") => {
@@ -264,9 +208,9 @@ function StoreProductDetail() {
     [allImages.length],
   );
 
-  const currentIndex = siblings?.findIndex((item) => item.id === id) ?? -1;
-  const prevId = siblings && currentIndex > 0 ? siblings[currentIndex - 1].id : siblings && siblings.length > 0 ? siblings[siblings.length - 1].id : null;
-  const nextId = siblings && currentIndex < siblings.length - 1 ? siblings[currentIndex + 1].id : siblings && siblings.length > 0 ? siblings[0].id : null;
+  const currentIndex = siblingIds?.findIndex((itemId) => itemId === id) ?? -1;
+  const prevId = siblingIds && currentIndex > 0 ? siblingIds[currentIndex - 1] : siblingIds && siblingIds.length > 0 ? siblingIds[siblingIds.length - 1] : null;
+  const nextId = siblingIds && currentIndex < siblingIds.length - 1 ? siblingIds[currentIndex + 1] : siblingIds && siblingIds.length > 0 ? siblingIds[0] : null;
 
   const goToProduct = useCallback(
     (targetId: string | null, dir: "up" | "down") => {
@@ -374,6 +318,8 @@ function StoreProductDetail() {
     }
   };
 
+  const productLoading = !detail && !productMissing && !detailError && (detailLoading || !!store?.id);
+
   if (storeLoading) {
     return (
       <div className="px-4 py-6 md:px-8">
@@ -396,6 +342,15 @@ function StoreProductDetail() {
     );
   }
 
+  if (detailError) {
+    return (
+      <div className="px-4 py-20 text-center">
+        <p className="text-sm text-muted-foreground">{detailError}</p>
+        <Link to="/s/$slug" params={{ slug: store.slug }} className="mt-2 inline-block text-xs underline">Back to store</Link>
+      </div>
+    );
+  }
+
   if (!product) {
     return (
       <div className="px-4 py-20 text-center">
@@ -405,14 +360,11 @@ function StoreProductDetail() {
     );
   }
 
-  const optionGroups: OptionWithValues[] = (options ?? []).map((option) => ({
-    ...option,
-    values: (optionValues ?? []).filter((value) => value.option_id === option.id),
-  })).filter((option) => option.values.length > 0);
-  const hasVariants = optionGroups.length > 0 && (variants?.length ?? 0) > 0;
-  const totalVariantStock = hasVariants ? variants!.reduce((sum, variant) => sum + (variant.active ? variant.stock : 0), 0) : 0;
+  const optionGroups = options.filter((option) => option.values.length > 0);
+  const hasVariants = optionGroups.length > 0 && variants.length > 0;
+  const totalVariantStock = hasVariants ? variants.reduce((sum, variant) => sum + (variant.active ? variant.stock : 0), 0) : 0;
   const selectedVariant = hasVariants
-    ? variants?.find((variant) => {
+    ? variants.find((variant) => {
         const variantOptions = selectedOptionsFromJson(variant.selected_options);
         return optionGroups.every((option) => variantOptions[option.name] === selectedOptions[option.name]);
       })

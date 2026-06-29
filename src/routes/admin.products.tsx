@@ -22,6 +22,7 @@ import {
   type ProductType,
 } from "@/lib/productTypes";
 import { shareProduct } from "@/lib/productShare";
+import { useProductStore } from "@/state/product_store";
 
 export const Route = createFileRoute("/admin/products")({
   component: AdminProducts,
@@ -390,6 +391,7 @@ function OptionsEditor({
 
 export function ProductEditor({ onSaved }: { onSaved?: () => void }) {
   const qc = useQueryClient();
+  const clearStoreProducts = useProductStore((state) => state.clearStoreProducts);
   const { selectedStore, selectedStoreId, isLoading: storesLoading } = useAdminStores();
   const [form, setForm] = useState<ProductForm>(() => createEmptyForm());
   const [pendingImages, setPendingImages] = useState<File[]>([]);
@@ -451,6 +453,7 @@ export function ProductEditor({ onSaved }: { onSaved?: () => void }) {
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["admin-products", selectedStoreId] });
+      if (selectedStoreId) clearStoreProducts(selectedStoreId);
       setForm(createEmptyForm());
       setPendingImages([]);
       onSaved?.();
@@ -567,6 +570,7 @@ export function ProductEditor({ onSaved }: { onSaved?: () => void }) {
 function AdminProducts() {
   const qc = useQueryClient();
   const location = useLocation();
+  const clearStoreProducts = useProductStore((state) => state.clearStoreProducts);
   const { selectedStore, selectedStoreId, isLoading: storesLoading } = useAdminStores();
 
   const { data: products, isLoading } = useQuery({
@@ -584,7 +588,10 @@ function AdminProducts() {
       const { error } = await supabase.from("products").delete().eq("id", id);
       if (error) throw error;
     },
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["admin-products", selectedStoreId] }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["admin-products", selectedStoreId] });
+      if (selectedStoreId) clearStoreProducts(selectedStoreId);
+    },
   });
 
   const shareAdminProduct = async (product: NonNullable<typeof products>[number]) => {
