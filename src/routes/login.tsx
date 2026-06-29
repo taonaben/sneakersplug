@@ -19,6 +19,7 @@ export const Route = createFileRoute("/login")({
 });
 
 type AuthMode = "signin" | "register";
+const CONFIRMATION_RESEND_SECONDS = 60;
 
 async function hasStore(userId: string) {
   const { data, error } = await supabase.from("stores").select("id").eq("owner_id", userId).limit(1);
@@ -44,6 +45,19 @@ async function ownsRedirectStore(userId: string, redirect: string | undefined) {
   return (data?.length ?? 0) > 0;
 }
 
+function getOnboardingRedirectUrl() {
+  return typeof window !== "undefined" ? `${window.location.origin}/onboarding` : undefined;
+}
+
+function isPendingVerificationError(message: string) {
+  const lower = message.toLowerCase();
+  return lower.includes("email not confirmed") || lower.includes("already registered") || lower.includes("already been registered");
+}
+
+function resendCooldownKey(email: string) {
+  return `confirmation-resend:${email.trim().toLowerCase()}`;
+}
+
 function LoginPage() {
   const navigate = useNavigate();
   const { redirect, mode: searchMode, verified } = Route.useSearch();
@@ -54,10 +68,26 @@ function LoginPage() {
   const [notice, setNotice] = useState("");
   const [loading, setLoading] = useState(false);
   const [verificationPending, setVerificationPending] = useState(false);
+  const [resending, setResending] = useState(false);
+  const [resendCooldown, setResendCooldown] = useState(0);
 
   const resetMessages = () => {
     setError("");
     setNotice("");
+  };
+
+  const setPendingVerificationNotice = () => {
+    setError("");
+    setVerificationPending(true);
+    setNotice("Check your email to confirm your account. Use resend if the email did not arrive.");
+  };
+
+  const startResendCooldown = () => {
+    if (typeof window === "undefined") return;
+
+    const availableAt = Date.now() + CONFIRMATION_RESEND_SECONDS * 1000;
+    window.localStorage.setItem(resendCooldownKey(email), String(availableAt));
+    setResendCooldown(CONFIRMATION_RESEND_SECONDS);
   };
 
   const routeAfterAuth = async (userId: string) => {
@@ -78,27 +108,52 @@ function LoginPage() {
   const handleRegister = async () => {
     if (password.length < 6) throw new Error("Password must be at least 6 characters.");
 
-    const emailRedirectTo =
-      typeof window !== "undefined"
-        ? `${window.location.origin}/onboarding`
-        : undefined;
-
     const { data, error: signUpError } = await supabase.auth.signUp({
       email: email.trim(),
       password,
       options: {
-        emailRedirectTo,
+        emailRedirectTo: getOnboardingRedirectUrl(),
       },
     });
     if (signUpError) throw signUpError;
 
     if (!data.session || !data.user) {
-      setVerificationPending(true);
-      setNotice("Check your email to confirm your account. This page will continue when your account is ready.");
+      setPendingVerificationNotice();
+      startResendCooldown();
       return;
     }
 
     navigate({ to: "/onboarding" });
+  };
+
+  const handleResendConfirmation = async () => {
+    if (!email.trim()) {
+      setError("Enter your email address first.");
+      return;
+    }
+
+    if (resendCooldown > 0) return;
+
+    setError("");
+    setResending(true);
+    try {
+      const { error: resendError } = await supabase.auth.resend({
+        type: "signup",
+        email: email.trim(),
+        options: {
+          emailRedirectTo: getOnboardingRedirectUrl(),
+        },
+      });
+      if (resendError) throw resendError;
+
+      setPendingVerificationNotice();
+      setNotice("Confirmation email sent again. Check your inbox and spam folder.");
+      startResendCooldown();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not resend the confirmation email.");
+    } finally {
+      setResending(false);
+    }
   };
 
   const pollForVerification = async () => {
@@ -131,6 +186,23 @@ function LoginPage() {
     return () => window.clearInterval(interval);
   }, [verificationPending, email, password]);
 
+  useEffect(() => {
+    if (!verificationPending || typeof window === "undefined") {
+      setResendCooldown(0);
+      return;
+    }
+
+    const updateCooldown = () => {
+      const availableAt = Number(window.localStorage.getItem(resendCooldownKey(email)) ?? 0);
+      const secondsLeft = Math.max(0, Math.ceil((availableAt - Date.now()) / 1000));
+      setResendCooldown(secondsLeft);
+    };
+
+    updateCooldown();
+    const interval = window.setInterval(updateCooldown, 1000);
+    return () => window.clearInterval(interval);
+  }, [email, verificationPending]);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     resetMessages();
@@ -140,7 +212,12 @@ function LoginPage() {
       if (mode === "signin") await handleSignIn();
       else await handleRegister();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Something went wrong.");
+      const message = err instanceof Error ? err.message : "Something went wrong.";
+      if (isPendingVerificationError(message)) {
+        setPendingVerificationNotice();
+      } else {
+        setError(message);
+      }
     } finally {
       setLoading(false);
     }
@@ -182,6 +259,15 @@ function LoginPage() {
               <p className="text-center text-[10px] uppercase tracking-wider text-muted-foreground">
                 Confirming Account
               </p>
+              <Button
+                type="button"
+                variant="outline"
+                disabled={resending || resendCooldown > 0}
+                onClick={handleResendConfirmation}
+                className="h-9 w-full uppercase tracking-widest text-[10px]"
+              >
+                {resending ? "Sending..." : resendCooldown > 0 ? `Resend in ${resendCooldown}s` : "Resend Email"}
+              </Button>
             </div>
           )}
 
