@@ -1,13 +1,27 @@
 import { createFileRoute, Link, Outlet, useLocation } from "@tanstack/react-router";
 import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Image, Plus, RefreshCw, Share2, Trash2, X } from "lucide-react";
+import { Eye, EyeOff, Image, Minus, MoreHorizontal, Pencil, Plus, RefreshCw, Share2, Trash2, X } from "lucide-react";
 import { Field } from "@/components/admin/Field";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Textarea } from "@/components/ui/textarea";
 import { useAdminStores } from "@/hooks/useAdminStores";
 import { supabase } from "@/integrations/supabase/client";
+import type { Tables } from "@/integrations/supabase/types";
 import {
   PRODUCT_TYPE_PRESETS,
   PRODUCT_TYPES,
@@ -27,8 +41,15 @@ import { shareProduct } from "@/lib/productShare";
 import { useProductStore } from "@/state/product_store";
 
 export const Route = createFileRoute("/admin/products")({
-  component: AdminProducts,
+  component: AdminProductsPage,
 });
+
+type AdminProduct = Tables<"products"> & {
+  active: boolean;
+  categories?: { name: string | null } | null;
+};
+
+type CategoryRow = Tables<"categories">;
 
 interface VariantDraft {
   selected_options: Record<string, string>;
@@ -60,6 +81,7 @@ const emptyForm: ProductForm = {
 };
 
 const PRODUCT_IMAGE_UPLOAD_TIMEOUT_MS = 45_000;
+const NO_CATEGORY_VALUE = "__none__";
 
 function createEmptyForm(): ProductForm {
   return {
@@ -646,18 +668,268 @@ export function ProductEditor({ onSaved }: { onSaved?: () => void }) {
   );
 }
 
-function AdminProducts() {
+interface EditProductForm {
+  name: string;
+  price: string;
+  stock: string;
+  category_id: string;
+  description: string;
+  attributes: ProductAttribute[];
+}
+
+function normalizeProductAttributes(value: unknown): ProductAttribute[] {
+  if (!Array.isArray(value)) return [];
+
+  return value
+    .map((item) => {
+      if (!item || typeof item !== "object") return null;
+      const record = item as Record<string, unknown>;
+      return {
+        name: typeof record.name === "string" ? record.name : "",
+        value: typeof record.value === "string" ? record.value : "",
+      };
+    })
+    .filter((item): item is ProductAttribute => Boolean(item));
+}
+
+function createEditProductForm(product: AdminProduct): EditProductForm {
+  return {
+    name: product.name,
+    price: String(product.price),
+    stock: String(product.stock),
+    category_id: product.category_id ?? "",
+    description: typeof product.description === "string" ? product.description : "",
+    attributes: normalizeProductAttributes(product.attributes),
+  };
+}
+
+function normalizeEditProductForm(form: EditProductForm) {
+  return {
+    name: form.name.trim(),
+    price: Number.parseFloat(form.price) || 0,
+    stock: Math.max(0, Number.parseInt(form.stock, 10) || 0),
+    category_id: form.category_id || null,
+    description: form.description.trim(),
+    attributes: cleanAttributes(form.attributes),
+  };
+}
+
+function serializeEditProductForm(form: EditProductForm) {
+  return JSON.stringify(normalizeEditProductForm(form));
+}
+
+function ProductEditModal({
+  product,
+  categories,
+  selectedStoreId,
+  onSaved,
+  onClosed,
+}: {
+  product: AdminProduct | null;
+  categories: CategoryRow[];
+  selectedStoreId: string | null | undefined;
+  onSaved: () => void;
+  onClosed: () => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [confirmDiscardOpen, setConfirmDiscardOpen] = useState(false);
+  const [form, setForm] = useState<EditProductForm | null>(null);
+  const [initialSnapshot, setInitialSnapshot] = useState("");
+  const isDirty = Boolean(form && serializeEditProductForm(form) !== initialSnapshot);
+
+  useEffect(() => {
+    if (!product) return;
+
+    const nextForm = createEditProductForm(product);
+    setForm(nextForm);
+    setInitialSnapshot(serializeEditProductForm(nextForm));
+    setOpen(true);
+    setConfirmDiscardOpen(false);
+  }, [product]);
+
+  const closeWithoutSaving = () => {
+    setConfirmDiscardOpen(false);
+    setOpen(false);
+    setForm(null);
+    onClosed();
+  };
+
+  const requestClose = () => {
+    if (isDirty) {
+      setConfirmDiscardOpen(true);
+      return;
+    }
+
+    closeWithoutSaving();
+  };
+
+  const updateProduct = useMutation({
+    mutationFn: async () => {
+      if (!product || !selectedStoreId || !form) return;
+
+      const normalized = normalizeEditProductForm(form);
+      if (!normalized.name) throw new Error("Product name is required.");
+      if (!Number.isFinite(normalized.price) || normalized.price < 0) throw new Error("Enter a valid price.");
+
+      const { error } = await supabase
+        .from("products")
+        .update({
+          name: normalized.name,
+          price: normalized.price,
+          stock: normalized.stock,
+          category_id: normalized.category_id,
+          description: normalized.description || null,
+          attributes: normalized.attributes,
+        })
+        .eq("id", product.id)
+        .eq("store_id", selectedStoreId);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      onSaved();
+      appFeedback.success({
+        title: "Product updated",
+        description: "The product details and stock were saved.",
+      });
+      closeWithoutSaving();
+    },
+    onError: (error) => {
+      appFeedback.errorFromUnknown(error, "Product was not updated");
+    },
+  });
+
+  const setStock = (value: number) => {
+    setForm((current) => current ? { ...current, stock: String(Math.max(0, value)) } : current);
+  };
+
+  if (!product || !form) return null;
+
+  const parsedStock = Math.max(0, Number.parseInt(form.stock, 10) || 0);
+
+  return (
+    <>
+      <Dialog open={open} onOpenChange={(nextOpen) => (nextOpen ? setOpen(true) : requestClose())}>
+        <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl">
+          <DialogHeader className="pr-8">
+            <DialogTitle className="text-sm uppercase tracking-wider">Edit Product</DialogTitle>
+            <DialogDescription className="text-xs">Update product details and correct the available stock.</DialogDescription>
+          </DialogHeader>
+
+          <form
+            className="space-y-4"
+            onSubmit={(event) => {
+              event.preventDefault();
+              if (!updateProduct.isPending) updateProduct.mutate();
+            }}
+          >
+            <div className="sticky top-0 z-10 -mx-6 border-b border-border bg-background px-6 py-3">
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Available Stock</p>
+                  <div className="mt-1 grid w-full grid-cols-[2.5rem_minmax(5rem,8rem)_2.5rem] gap-1 sm:w-auto">
+                    <Button type="button" variant="outline" size="icon" className="h-9 w-10" onClick={() => setStock(parsedStock - 1)} aria-label="Decrease stock">
+                      <Minus className="h-3 w-3" />
+                    </Button>
+                    <Input
+                      type="number"
+                      min="0"
+                      value={form.stock}
+                      onChange={(event) => setForm((current) => current ? { ...current, stock: event.target.value } : current)}
+                      className="h-9 text-center text-sm font-bold"
+                      aria-label="Available stock"
+                    />
+                    <Button type="button" variant="outline" size="icon" className="h-9 w-10" onClick={() => setStock(parsedStock + 1)} aria-label="Increase stock">
+                      <Plus className="h-3 w-3" />
+                    </Button>
+                  </div>
+                </div>
+                <Button type="submit" disabled={!isDirty || updateProduct.isPending} className="h-9 text-[10px] uppercase tracking-wider">
+                  {updateProduct.isPending ? "Saving..." : "Confirm Changes"}
+                </Button>
+              </div>
+            </div>
+
+            <div className="grid gap-3 md:grid-cols-[1fr_9rem]">
+              <Field label="Product Name">
+                <Input value={form.name} onChange={(event) => setForm((current) => current ? { ...current, name: event.target.value } : current)} required />
+              </Field>
+              <Field label="Price">
+                <Input type="number" min="0" step="0.01" value={form.price} onChange={(event) => setForm((current) => current ? { ...current, price: event.target.value } : current)} required />
+              </Field>
+            </div>
+
+            <Field label="Category" helper="Optional; used for storefront filtering.">
+              <Select value={form.category_id || NO_CATEGORY_VALUE} onValueChange={(value) => setForm((current) => current ? { ...current, category_id: value === NO_CATEGORY_VALUE ? "" : value } : current)}>
+                <SelectTrigger><SelectValue placeholder="Select category" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={NO_CATEGORY_VALUE}>No category</SelectItem>
+                  {categories.map((category) => <SelectItem key={category.id} value={category.id}>{category.name}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </Field>
+
+            <Field label="Description">
+              <Textarea value={form.description} onChange={(event) => setForm((current) => current ? { ...current, description: event.target.value } : current)} className="min-h-24 text-sm" />
+            </Field>
+
+            <ProductDetailsEditor
+              attributes={form.attributes}
+              onChange={(attributes) => setForm((current) => current ? { ...current, attributes } : current)}
+            />
+
+            {updateProduct.error && <p className="text-xs text-destructive">{updateProduct.error.message}</p>}
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      <AlertDialog open={confirmDiscardOpen} onOpenChange={setConfirmDiscardOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Discard unsaved product changes?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This product has edits that have not been confirmed. Save them with Confirm Changes, or discard them to close the modal.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Keep editing</AlertDialogCancel>
+            <AlertDialogAction className="bg-destructive text-destructive-foreground hover:bg-destructive/90" onClick={closeWithoutSaving}>
+              Discard Changes
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </>
+  );
+}
+
+function AdminProductsPage() {
   const qc = useQueryClient();
   const location = useLocation();
   const clearStoreProducts = useProductStore((state) => state.clearStoreProducts);
   const { selectedStore, selectedStoreId, isLoading: storesLoading } = useAdminStores();
   const storeSearch = selectedStoreId ? { store: selectedStoreId } : undefined;
+  const [editingProduct, setEditingProduct] = useState<AdminProduct | null>(null);
+
+  const refreshProducts = () => {
+    void qc.invalidateQueries({ queryKey: ["admin-products", selectedStoreId] });
+    if (selectedStoreId) clearStoreProducts(selectedStoreId);
+  };
 
   const { data: products, isLoading } = useQuery({
     queryKey: ["admin-products", selectedStoreId],
     enabled: !!selectedStoreId,
     queryFn: async () => {
       const { data, error } = await supabase.from("products").select("*, categories(name)").eq("store_id", selectedStoreId).order("created_at", { ascending: false });
+      if (error) throw error;
+      return data as AdminProduct[];
+    },
+  });
+
+  const { data: categories = [] } = useQuery({
+    queryKey: ["categories", selectedStoreId],
+    enabled: !!selectedStoreId,
+    queryFn: async () => {
+      const { data, error } = await supabase.from("categories").select("*").eq("store_id", selectedStoreId).order("sort_order");
       if (error) throw error;
       return data;
     },
@@ -669,12 +941,188 @@ function AdminProducts() {
       if (error) throw error;
     },
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["admin-products", selectedStoreId] });
-      if (selectedStoreId) clearStoreProducts(selectedStoreId);
+      refreshProducts();
+      appFeedback.success({ title: "Product deleted", description: "The product was removed." });
+    },
+    onError: (error) => {
+      appFeedback.errorFromUnknown(error, "Product was not deleted");
     },
   });
 
-  const shareAdminProduct = async (product: NonNullable<typeof products>[number]) => {
+  const toggleActiveMutation = useMutation({
+    mutationFn: async ({ id, active }: { id: string; active: boolean }) => {
+      const { error } = await supabase.from("products").update({ active }).eq("id", id);
+      if (error) throw error;
+    },
+    onSuccess: (_data, variables) => {
+      refreshProducts();
+      appFeedback.success({
+        title: variables.active ? "Product activated" : "Product deactivated",
+        description: variables.active ? "Customers can see this product again." : "Customers will no longer see this product.",
+      });
+    },
+    onError: (error) => {
+      appFeedback.errorFromUnknown(error, "Product status was not updated");
+    },
+  });
+
+  const shareAdminProduct = async (product: AdminProduct) => {
+    if (!selectedStore) return;
+
+    const url = new URL(`/s/${selectedStore.slug}/product/${product.id}`, window.location.origin).toString();
+
+    try {
+      await shareProduct({
+        name: product.name,
+        price: product.price,
+        storeName: selectedStore.name,
+        imageUrl: product.image_url,
+        url,
+      });
+    } catch (error) {
+      if (!(error instanceof DOMException && error.name === "AbortError")) throw error;
+    }
+  };
+
+  if (storesLoading) return <p className="text-xs text-muted-foreground">Loading...</p>;
+  if (!selectedStore) return <p className="text-xs text-muted-foreground">Create a store before adding products.</p>;
+  if (location.pathname !== "/admin/products") return <Outlet />;
+
+  return (
+    <div className="max-w-3xl">
+      <div className="mb-4 flex flex-col items-start gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <h2 className="text-sm font-bold uppercase tracking-wider">Products - {selectedStore.name}</h2>
+        <Button asChild size="sm" className="h-8 text-[10px] uppercase tracking-wider">
+          <Link to="/admin/products/new" search={storeSearch}>
+            <Plus className="mr-1 h-3 w-3" /> Add Product
+          </Link>
+        </Button>
+      </div>
+
+      {isLoading ? (
+        <p className="text-xs text-muted-foreground">Loading...</p>
+      ) : products?.length === 0 ? (
+        <div className="border border-border p-6 text-center">
+          <p className="text-xs text-muted-foreground">No products yet.</p>
+          <Button asChild size="sm" className="mt-3 h-8 text-[10px] uppercase tracking-wider">
+            <Link to="/admin/products/new" search={storeSearch}>Add Product</Link>
+          </Button>
+        </div>
+      ) : (
+        <div className="space-y-2">
+          {products?.map((p) => (
+            <div key={p.id} className="flex items-center gap-3 border border-border p-2">
+              <div className="h-10 w-10 shrink-0 overflow-hidden bg-secondary">
+                {p.image_url && <img src={p.image_url} alt="" className="h-full w-full object-cover" loading="lazy" decoding="async" />}
+              </div>
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center gap-2">
+                  <p className="truncate text-xs font-medium">{p.name}</p>
+                  {!p.active && <span className="shrink-0 border border-border px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider text-muted-foreground">Inactive</span>}
+                </div>
+                <p className="text-[10px] text-muted-foreground">
+                  ${p.price} - {PRODUCT_TYPE_PRESETS[(p.product_type as ProductType) || "general"]?.label ?? "General"} - Stock: {p.stock}
+                </p>
+              </div>
+              <div className="flex shrink-0 items-center gap-1">
+                <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => shareAdminProduct(p)} aria-label={`Share ${p.name}`}>
+                  <Share2 className="h-3 w-3" />
+                </Button>
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button variant="ghost" size="icon" className="h-8 w-8" aria-label={`More options for ${p.name}`}>
+                      <MoreHorizontal className="h-3 w-3" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end" className="w-44">
+                    <DropdownMenuItem onSelect={() => setEditingProduct(p)}>
+                      <Pencil className="h-3 w-3" /> Edit details
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onSelect={() => toggleActiveMutation.mutate({ id: p.id, active: !p.active })}>
+                      {p.active ? <EyeOff className="h-3 w-3" /> : <Eye className="h-3 w-3" />}
+                      {p.active ? "Deactivate" : "Activate"}
+                    </DropdownMenuItem>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem className="text-destructive focus:text-destructive" onSelect={() => deleteMutation.mutate(p.id)}>
+                      <Trash2 className="h-3 w-3" /> Delete
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+      <ProductEditModal product={editingProduct} categories={categories} selectedStoreId={selectedStoreId} onSaved={refreshProducts} onClosed={() => setEditingProduct(null)} />
+    </div>
+  );
+}
+
+function AdminProducts() {
+  const qc = useQueryClient();
+  const location = useLocation();
+  const clearStoreProducts = useProductStore((state) => state.clearStoreProducts);
+  const { selectedStore, selectedStoreId, isLoading: storesLoading } = useAdminStores();
+  const storeSearch = selectedStoreId ? { store: selectedStoreId } : undefined;
+  const [editingProduct, setEditingProduct] = useState<AdminProduct | null>(null);
+
+  const refreshProducts = () => {
+    void qc.invalidateQueries({ queryKey: ["admin-products", selectedStoreId] });
+    if (selectedStoreId) clearStoreProducts(selectedStoreId);
+  };
+
+  const { data: products, isLoading } = useQuery({
+    queryKey: ["admin-products", selectedStoreId],
+    enabled: !!selectedStoreId,
+    queryFn: async () => {
+      const { data, error } = await supabase.from("products").select("*, categories(name)").eq("store_id", selectedStoreId).order("created_at", { ascending: false });
+      if (error) throw error;
+      return data as AdminProduct[];
+    },
+  });
+
+  const { data: categories = [] } = useQuery({
+    queryKey: ["categories", selectedStoreId],
+    enabled: !!selectedStoreId,
+    queryFn: async () => {
+      const { data, error } = await supabase.from("categories").select("*").eq("store_id", selectedStoreId).order("sort_order");
+      if (error) throw error;
+      return data;
+    },
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: async (id: string) => {
+      const { error } = await supabase.from("products").delete().eq("id", id);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      refreshProducts();
+      appFeedback.success({ title: "Product deleted", description: "The product was removed." });
+    },
+    onError: (error) => {
+      appFeedback.errorFromUnknown(error, "Product was not deleted");
+    },
+  });
+
+  const toggleActiveMutation = useMutation({
+    mutationFn: async ({ id, active }: { id: string; active: boolean }) => {
+      const { error } = await supabase.from("products").update({ active }).eq("id", id);
+      if (error) throw error;
+    },
+    onSuccess: (_data, variables) => {
+      refreshProducts();
+      appFeedback.success({
+        title: variables.active ? "Product activated" : "Product deactivated",
+        description: variables.active ? "Customers can see this product again." : "Customers will no longer see this product.",
+      });
+    },
+    onError: (error) => {
+      appFeedback.errorFromUnknown(error, "Product status was not updated");
+    },
+  });
+
+  const shareAdminProduct = async (product: AdminProduct) => {
     if (!selectedStore) return;
 
     const url = new URL(`/s/${selectedStore.slug}/product/${product.id}`, window.location.origin).toString();

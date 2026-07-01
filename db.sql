@@ -48,6 +48,8 @@ CREATE TABLE public.products (
   category_id uuid,
   image_url text,
   stock integer NOT NULL DEFAULT 0,
+  active boolean NOT NULL DEFAULT true,
+  description text,
   created_at timestamp with time zone NOT NULL DEFAULT now(),
   updated_at timestamp with time zone NOT NULL DEFAULT now(),
   CONSTRAINT products_pkey PRIMARY KEY (id),

@@ -161,9 +161,11 @@ export type Database = {
       }
       products: {
         Row: {
+          active: boolean
           attributes: Json
           category_id: string | null
           created_at: string
+          description: string | null
           id: string
           image_url: string | null
           name: string
@@ -174,9 +176,11 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          active?: boolean
           attributes?: Json
           category_id?: string | null
           created_at?: string
+          description?: string | null
           id?: string
           image_url?: string | null
           name: string
@@ -187,9 +191,11 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          active?: boolean
           attributes?: Json
           category_id?: string | null
           created_at?: string
+          description?: string | null
           id?: string
           image_url?: string | null
           name?: string

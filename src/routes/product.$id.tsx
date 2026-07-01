@@ -25,7 +25,7 @@ function ProductRedirect() {
   const { data: product, isLoading: productLoading } = useQuery({
     queryKey: ["product-redirect", id],
     queryFn: async () => {
-      const { data, error } = await supabase.from("products").select("id, store_id").eq("id", id).maybeSingle();
+      const { data, error } = await supabase.from("products").select("id, store_id").eq("id", id).eq("active", true).maybeSingle();
       if (error) throw error;
       return data;
     },

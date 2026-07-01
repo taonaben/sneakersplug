@@ -69,6 +69,7 @@ async function fetchStoreProducts(storeId: string, categoryId?: string | null) {
     .from("products")
     .select("*")
     .eq("store_id", storeId)
+    .eq("active", true)
     .order("created_at", { ascending: false });
 
   if (categoryId) query = query.eq("category_id", categoryId);
@@ -85,6 +86,7 @@ async function fetchProductDetail(storeId: string, productId: string) {
       .select("*")
       .eq("id", productId)
       .eq("store_id", storeId)
+      .eq("active", true)
       .maybeSingle(),
     supabase
       .from("product_images")
