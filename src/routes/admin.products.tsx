@@ -22,6 +22,7 @@ import {
   type ProductType,
 } from "@/lib/productTypes";
 import { appFeedback } from "@/lib/appFeedback";
+import { PRODUCT_IMAGE_ACCEPT, optimizeImageForUpload } from "@/lib/imageOptimization";
 import { shareProduct } from "@/lib/productShare";
 import { useProductStore } from "@/state/product_store";
 
@@ -423,6 +424,7 @@ export function ProductEditor({ onSaved }: { onSaved?: () => void }) {
   const storeSearch = selectedStoreId ? { store: selectedStoreId } : undefined;
   const [form, setForm] = useState<ProductForm>(() => createEmptyForm());
   const [pendingImages, setPendingImages] = useState<File[]>([]);
+  const [isOptimizingImages, setIsOptimizingImages] = useState(false);
   const pendingImagePreviews = useMemo(
     () => pendingImages.map((file) => ({ file, url: URL.createObjectURL(file) })),
     [pendingImages],
@@ -515,6 +517,37 @@ export function ProductEditor({ onSaved }: { onSaved?: () => void }) {
     }));
   };
 
+  const addPendingImages = async (files: FileList | null) => {
+    if (!files || files.length === 0) return;
+
+    const remainingSlots = Math.max(0, 4 - pendingImages.length);
+    if (remainingSlots === 0) {
+      appFeedback.error({
+        title: "Image limit reached",
+        description: "Each product can only have 4 total images.",
+      });
+      return;
+    }
+
+    setIsOptimizingImages(true);
+    try {
+      const selectedFiles = Array.from(files).slice(0, remainingSlots);
+      const optimizedImages = await Promise.all(selectedFiles.map((file) => optimizeImageForUpload(file)));
+      setPendingImages((current) => [...current, ...optimizedImages].slice(0, 4));
+
+      if (files.length > remainingSlots) {
+        appFeedback.info({
+          title: "Image limit reached",
+          description: "Only the first 4 product images were added.",
+        });
+      }
+    } catch (error) {
+      appFeedback.errorFromUnknown(error, "Images were not added");
+    } finally {
+      setIsOptimizingImages(false);
+    }
+  };
+
   if (storesLoading) return <p className="text-xs text-muted-foreground">Loading...</p>;
   if (!selectedStore) return <p className="text-xs text-muted-foreground">Create a store before adding products.</p>;
 
@@ -574,7 +607,7 @@ export function ProductEditor({ onSaved }: { onSaved?: () => void }) {
             <div className="flex flex-wrap gap-2">
               {pendingImagePreviews.map(({ file, url }, i) => (
                 <div key={`${file.name}-${i}`} className="relative group h-16 w-16 bg-secondary overflow-hidden">
-                  <img src={url} alt="" className="h-full w-full object-cover" />
+                  <img src={url} alt="" className="h-full w-full object-cover" decoding="async" />
                   {i === 0 && <span className="absolute top-0 left-0 bg-foreground text-background text-[8px] px-1">MAIN</span>}
                   <button type="button" onClick={() => setPendingImages((p) => p.filter((_, j) => j !== i))} className="absolute inset-0 bg-black/50 text-white opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity">
                     <Trash2 className="h-3 w-3" />
@@ -586,21 +619,22 @@ export function ProductEditor({ onSaved }: { onSaved?: () => void }) {
           <Field label="Product Images" helper="Choose up to 4 images. The first image becomes the cover.">
             <Input
               type="file"
-              accept="image/*"
+              accept={PRODUCT_IMAGE_ACCEPT}
               multiple
               onChange={(e) => {
-                const files = e.target.files;
-                if (files) setPendingImages((p) => [...p, ...Array.from(files)].slice(0, 4));
+                void addPendingImages(e.target.files);
                 e.target.value = "";
               }}
+              disabled={isOptimizingImages || saveMutation.isPending}
               className="text-xs"
             />
+            {isOptimizingImages && <p className="mt-1 text-[10px] uppercase tracking-wider text-muted-foreground">Optimizing images...</p>}
           </Field>
         </div>
 
         <div className="flex flex-col gap-2 sm:flex-row">
-          <Button type="submit" disabled={saveMutation.isPending} className="text-xs uppercase tracking-widest">
-            {saveMutation.isPending ? "Saving..." : "Add Product"}
+          <Button type="submit" disabled={saveMutation.isPending || isOptimizingImages} className="text-xs uppercase tracking-widest">
+            {saveMutation.isPending ? "Saving..." : isOptimizingImages ? "Optimizing..." : "Add Product"}
           </Button>
           <Button asChild type="button" variant="outline" className="text-xs">
             <Link to="/admin/products" search={storeSearch}>Cancel</Link>
@@ -687,7 +721,7 @@ function AdminProducts() {
           {products?.map((p) => (
             <div key={p.id} className="flex items-center gap-3 border border-border p-2">
               <div className="h-10 w-10 bg-secondary shrink-0 overflow-hidden">
-                {p.image_url && <img src={p.image_url} alt="" className="h-full w-full object-cover" />}
+                {p.image_url && <img src={p.image_url} alt="" className="h-full w-full object-cover" loading="lazy" decoding="async" />}
               </div>
               <div className="flex-1 min-w-0">
                 <p className="text-xs font-medium truncate">{p.name}</p>

@@ -73,7 +73,7 @@ function HomePage() {
                 className="flex items-center gap-3 border border-border p-3 transition-colors hover:bg-secondary"
               >
                 <div className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden bg-secondary text-xs font-bold uppercase">
-                  {store.logo_url ? <img src={store.logo_url} alt={store.name} className="h-full w-full object-cover" /> : store.name.slice(0, 1)}
+                  {store.logo_url ? <img src={store.logo_url} alt={store.name} className="h-full w-full object-cover" loading="lazy" decoding="async" /> : store.name.slice(0, 1)}
                 </div>
                 <div className="min-w-0">
                   <p className="truncate text-xs font-bold uppercase tracking-wider">{store.name}</p>

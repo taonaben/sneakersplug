@@ -51,7 +51,7 @@ export function CartPageContent({ storeSlug }: { storeSlug?: string }) {
           <div key={`${item.id}-${variantId ?? "no-variant"}`} className="flex gap-3">
             <div className="h-20 w-20 shrink-0 overflow-hidden bg-secondary">
               {item.image_url ? (
-                <img src={item.image_url} alt={item.name} className="h-full w-full object-cover" />
+                <img src={item.image_url} alt={item.name} className="h-full w-full object-cover" loading="lazy" decoding="async" />
               ) : (
                 <div className="flex h-full w-full items-center justify-center text-[8px] uppercase text-muted-foreground">No img</div>
               )}

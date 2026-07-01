@@ -478,7 +478,7 @@ function StoreProductDetail() {
           onAnimationEnd={() => setSlideDir(null)}
         >
           {currentImage ? (
-            <img src={currentImage} alt={product.name} className="h-full w-full object-cover" />
+            <img src={currentImage} alt={product.name} className="h-full w-full object-cover" decoding="async" />
           ) : (
             <div className="flex h-full w-full items-center justify-center text-xs uppercase tracking-widest text-muted-foreground">No image</div>
           )}
